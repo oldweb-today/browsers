@@ -1,4 +1,4 @@
-FROM python:3.5.1
+FROM python:3.5.2
 MAINTAINER Ilya Kreymer <ikreymer at gmail.com>
 
 WORKDIR /app
@@ -10,11 +10,7 @@ RUN pip install -r requirements.txt
 ADD main.py /app/
 ADD dockercontroller.py /app/
 ADD uwsgi.ini /app/
-ADD . /app/
-
-VOLUME /app/static/
-#VOLUME /app/browser_app.py
 
 CMD ["uwsgi", "uwsgi.ini"]
 
-#CMD ["python", "main.py"]
+

@@ -28,16 +28,28 @@ Util.load_scripts(["webutil.js", "base64.js", "websock.js", "des.js",
 
 $(function() {
     function init_container() {
-        var params = {"url": url, "ts": curr_ts, "browser": coll, "state": "ping"};
+        var params = {"url": url, "ts": curr_ts, "browser": browser, "state": "ping"};
+
+        // calculate dimensions
+        var hh = $('header').height();
+        var w = window.innerWidth * 0.96;
+        var h = window.innerHeight - (25 + hh);
+
+        params['width'] = Math.max(w, 800);
+        params['height'] = Math.max(h, 600);
+        params['width'] = parseInt(params['width'] / 16) * 16;
+        params['height'] = parseInt(params['height'] / 16) * 16;
+        params['upsid'] = upsid;
 
         function send_request() {
-            var init_url = "/init_browser?" + $.param(params);
-            
             if (waiting_for_container) {
                 return;
             }
-            
+
             waiting_for_container = true;
+
+            //var init_url = "/api/v1/browsers/init_browser?" + $.param(params);
+            var init_url = "/_init_browser?" + $.param(params);
 
             $.getJSON(init_url, handle_browser_response)
             .fail(function() {
@@ -61,6 +73,8 @@ $(function() {
             if (data.cmd_host && data.vnc_host) {
                 cmd_host = data.cmd_host;
                 vnc_host = data.vnc_host;
+
+                RecordingSizeWidget.setBrowserIP(data.ip);
 
                 $("#currLabel").html("Loading <b>" + url + "</b>");
                 window.setTimeout(do_init, 1000);
@@ -108,7 +122,7 @@ $(function() {
     $("#datetime").click(lose_focus);
 
     function update_replay_state() {
-        var full_url = "/" + coll + "/" + curr_ts + "/" + url;
+        var full_url = "/" + browser + "/" + curr_ts + "/" + url;
 
         window.history.replaceState({}, "", full_url);
     }
@@ -116,11 +130,11 @@ $(function() {
     function establish_ping_sock()
     {
         try {
-            pingsock = new WebSocket("ws://" + cmd_host + "/pingsock");
+            pingsock = new WebSocket("wss://" + cmd_host + "/pingsock");
         } catch (e) {
             console.log(e);
         }
-        
+
         pingsock.onerror = function(e) {
             //console.log("Sock Error");
             pingsock = undefined;
@@ -134,12 +148,12 @@ $(function() {
             handle_data_update(JSON.parse(e.data));
 
             // hide cursor for nextstep for now due to mouse issues
-            if (coll == "WWW") {
+            if (browser == "WWW") {
                 $("#noVNC_canvas").css("cursor", "none");
             }
         }
     }
-    
+
     function format_date(date) {
         return date.toISOString().slice(0, -5).replace("T", " ");
     }
@@ -162,7 +176,7 @@ $(function() {
                 sparkline.move_current(date);
             }
         }
-        
+
         var any_data = false;
 
         if (data.hosts && data.hosts.length > 0) {
@@ -175,7 +189,7 @@ $(function() {
                     //$("#statsHosts").append(elem);
                     $("#statsHosts li[data-id='" + host + "']").show();
                 });
-                
+
                 data.hosts = curr_hosts;
                 $("#statsHostsWrap").show();
             }
@@ -187,7 +201,7 @@ $(function() {
             $("#statsCountWrap").show();
             any_data = true;
         }
-            
+
         if (data.min_sec && data.max_sec) {
             var min_date = new Date(data.min_sec * 1000);
             var max_date = new Date(data.max_sec * 1000);
@@ -197,19 +211,19 @@ $(function() {
             $("#statsSpanWrap").show();
             any_data = true;
         }
-        
+
         if (any_data) {
             $(".session-info").show();
             $("#session-loading").hide();
         }
-        
+
         if (data.ttl != undefined) {
             set_time_left(data.ttl);
         }
-        
-        update_replay_state();
+
+        //update_replay_state();
     }
-    
+
     function set_time_left(time_left) {
         end_time = Math.floor(new Date().getTime() / 1000 + time_left);
     }
@@ -236,8 +250,30 @@ $(function() {
                 rfb.setDesktopSize(innerW, innerH - controlbarH - padding);
         }
     }
+
+    function clientPosition() {
+        var hh = $('header').height();
+        var c = $('#noVNC_canvas');
+        var ch = c.height();
+        var cw = c.width();
+        c.css({
+            marginLeft: (window.innerWidth - cw)/2,
+            marginTop: (window.innerHeight - (hh + ch + 25))/2
+        });
+    }
+
+    function clientResize() {
+        var hh = $('header').height();
+        var w = Math.round(window.innerWidth * 0.96);
+        var h = Math.round(window.innerHeight - (25 + hh));
+
+        var s = rfb._display.autoscale(w, h);
+        rfb.get_mouse().set_scale(s);
+    }
+
     function FBUComplete(rfb, fbu) {
         UIresize();
+        clientPosition();
         rfb.set_onFBUComplete(function() { });
     }
 
@@ -310,7 +346,7 @@ $(function() {
 
             // start ping at regular intervals
             //ping_id = window.setTimeout(ping, ping_interval);
-            establish_ping_sock();
+            //establish_ping_sock();
         }
 
         //        var s, sb, cad, level;
@@ -347,6 +383,8 @@ $(function() {
         clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(function(){
             UIresize();
+            clientResize();
+            clientPosition();
         }, 500);
     };
 
@@ -356,10 +394,10 @@ $(function() {
         var full_url = window.location.origin + "/" + path + "/" + curr_ts + "/" + url;
         window.location.href = full_url;
     });
-    
+
 
     // Update request dt
-    window.on_change_curr_ts = function(ts) {      
+    window.on_change_curr_ts = function(ts) {
         if (pingsock) {
             pingsock.send(JSON.stringify({"ts": ts}));
             $(".rel_message").show();
@@ -387,19 +425,19 @@ $(function() {
             min = "0" + min;
         }
 
-        $("#expire").text(min + ":" + sec);       
+        $("#expire").text(min + ":" + sec);
     }
-    
+
     // Countdown updater
     cid = setInterval(update_countdown, 1000);
-    
+
     // INIT
     init_container();
 
-    if (coll) {
-        var browser = $("#browser-selector td[data-path='" + coll + "']");
-        browser.addClass("selected");
-        $("#about-link").attr("href", browser.attr("data-about-url"));
+    if (browser) {
+        var browser_info = $("#browser-selector td[data-path='" + browser + "']");
+        browser_info.addClass("selected");
+        $("#about-link").attr("href", browser_info.attr("data-about-url"));
         $(".about-browser").show();
     }
 });
