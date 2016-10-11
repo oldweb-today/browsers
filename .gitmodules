@@ -1,0 +1,9 @@
+[submodule "browsers/base-browser"]
+	path = browsers/base-browser
+	url = https://github.com/webrecorder/base-browser
+[submodule "browsers/browser-firefox"]
+	path = browsers/browser-firefox
+	url = https://github.com/webrecorder/browser-firefox
+[submodule "browsers/browser-chrome"]
+	path = browsers/browser-chrome
+	url = https://github.com/webrecorder/browser-chrome
