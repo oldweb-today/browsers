@@ -1,4 +1,5 @@
 import gevent.monkey; gevent.monkey.patch_all()
+import gevent
 
 from bottle import route, run, template, request, default_app, jinja2_view
 from bottle import redirect, static_file, response, debug, HTTPError
@@ -9,44 +10,65 @@ import base64
 
 from dockercontroller import DockerController
 
-# Routes Below
-# ===================
 
-@route('/static/<filepath:path>')
-def server_static(filepath):
-    return static_file(filepath, root='/app/static/')
-
-
-@route('/view/<browser>')
+@route('/view/<browser>/<url:path>')
 @jinja2_view('browser_embed.html', template_lookup=['templates'])
-def load_template(browser):
+def load_template(browser, url):
+    """ Load a given url with a specified browser
+        No proxy settings are applied, browser should run in normal live mode
+    """
+    if request.query_string:
+        url += '?' + request.query_string
+
     container_data = {
-        'url': request.query.getunicode('url'),
-        'ts': request.query.getunicode('ts'),
+        'url': url,
         'browser': browser,
+        'ts': 'now',
     }
 
-    upsid = request.query.getunicode('upsid')
-    if not upsid:
-        upsid = dc.register_request(container_data)
+    reqid = request.query.getunicode('reqid')
+    if not reqid:
+        reqid = dc.register_request(container_data)
 
-    container_data['upsid'] = upsid
+    container_data['reqid'] = reqid
 
-    return {'STATIC_PREFIX': '/static/',
+    return {'STATIC_PREFIX': '/static',
             'container_data': container_data
            }
 
+@route('/request_browser/<browser>', method='POST')
+def request_browser():
+    """
+request a new browser with specified container data
+should include: url and ts, other params as needed
+"""
+    container_data = dict(request.forms.decode())
+    container_data['browser'] = browser
+    reqid = dc.register_request(container_data)
+    return {'reqid': reqid}
+
+
 @route(['/browsers'])
 def list_browsers():
+    """
+List all available browsers
+Query params can be used to filter on metadata properties
+"""
     params = dict(request.query)
     return dc.load_avail_browsers(params)
 
 @route(['/browsers/<name>'])
 def get_browser(name):
+    """
+Get info for specific browser
+"""
     return dc.load_browser(name)
 
 @route(['/browsers/<name>/icon'])
 def get_browser_icon(name):
+    """
+Load icon for browser using wr.icon metadata
+"""
     res = dc.load_browser(name)
     if not res:
         raise HTTPError(404, 'Browser Not Found')
@@ -55,37 +77,27 @@ def get_browser_icon(name):
     return base64.b64decode(res['icon'].split(',', 1)[-1])
 
 
-@route(['/_init_browser'])
+@route(['/init_browser'])
 def init_container():
-    upsid = request.query.get('upsid', '')
+    reqid = request.query.get('reqid', '')
 
-    req_key = dc.is_valid_request(request.params)
-    if not req_key:
-        response.status = 400
-        return {'error_message', 'Upstream ID missing or invalid'}
-
-    client_id, queue_pos = dc.am_i_next(request.query.get('id'))
-
-    if queue_pos >= 0:
-        resp = {'queue': queue_pos, 'id': client_id}
-
-    browser = request.query.get('browser')
-    url = request.query.get('url')
-    ts = request.query.get('ts')
     width = request.query.get('width')
     height = request.query.get('height')
 
     host = request.urlparts.netloc.split(':')[0]
-    resp = dc.do_init(browser, url, ts, host, client_id, width, height)
 
-    new_key = 'ip:' + resp['ip']
-    dc.redis.rename(req_key, new_key)
-    dc.redis.persist(new_key)
+    resp = dc.init_new_browser(reqid, host, width, height)
+
+    if not resp:
+        response.status = 404
+        resp = {'error_message': 'Invalid Browser Request'}
 
     response.headers['Cache-Control'] = 'no-cache, no-store, max-age=0, must-revalidate'
     return resp
 
-
+@route('/static/<filepath:path>')
+def server_static(filepath):
+    return static_file(filepath, root='/app/static/')
 
 
 # ======================

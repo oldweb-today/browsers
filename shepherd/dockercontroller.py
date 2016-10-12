@@ -21,52 +21,50 @@ class DockerController(object):
     def __init__(self):
         config = self._load_config()
 
-        self.REDIS_BROWSER_URL = os.environ['REDIS_BROWSER_URL']
-        self.PROXY_HOST_PORT = os.environ.get('PROXY_HOST_PORT', '')
+        self.name = os.environ.get('CLUSTER_NAME', '')
+        self.label_name = config['label_name']
 
-        self.C_EXPIRE_TIME = config['init_container_expire_secs']
-        self.Q_EXPIRE_TIME = config['queue_expire_secs']
+        self.req_expire_secs = config['req_expire_secs']
+        self.queue_expire_secs = config['queue_expire_secs']
 
-        self.REMOVE_EXP_TIME = config['remove_expired_secs']
+        self.api_version = config['api_version']
 
-        self.VERSION = config['api_version']
+        self.vnc_port = config['vnc_port']
+        self.cmd_port = config['cmd_port']
 
-        self.VNC_PORT = config['vnc_port']
-        self.CMD_PORT = config['cmd_port']
+        self.max_containers = config['max_containers']
 
-        self.MAX_CONT = config['max_containers']
-
-        self.T_EXPIRE_TIME = config['throttle_expire_secs']
+        self.throttle_expire_secs = config['throttle_expire_secs']
 
         self.browser_image_prefix = config['browser_image_prefix']
         self.label_browser = config['label_browser']
         self.label_prefix = config['label_prefix']
 
-        self.network_name = config['network_name']
-        self.volume_source = config.get('volume_source')
+        self.network_name = os.environ.get('NETWORK_NAME', 'bridge')
+        self.volume_source = os.environ.get('BROWSER_VOLUMES')
 
         self.default_browser = config['default_browser']
 
         self._init_cli()
-
-        #self.browsers = self.load_avail_browsers
 
         self._init_redis(config)
 
     def _init_cli(self):
         if os.path.exists('/var/run/docker.sock'):
             self.cli = Client(base_url='unix://var/run/docker.sock',
-                              version=self.VERSION)
+                              version=self.api_version)
         else:
             kwargs = kwargs_from_env(assert_hostname=False)
-            kwargs['version'] = self.VERSION
+            kwargs['version'] = self.api_version
             self.cli = Client(**kwargs)
 
     def _init_redis(self, config):
-        self.redis = redis.StrictRedis.from_url(self.REDIS_BROWSER_URL, decode_responses=True)
+        redis_url = os.environ['REDIS_URL']
+
+        self.redis = redis.StrictRedis.from_url(redis_url, decode_responses=True)
 
         self.redis.setnx('next_client', '1')
-        self.redis.setnx('max_containers', self.MAX_CONT)
+        self.redis.setnx('max_containers', self.max_containers)
         self.redis.setnx('num_containers', '0')
         self.redis.setnx('cpu_auto_adjust', 5.5)
 
@@ -83,7 +81,7 @@ class DockerController(object):
         self.redis.setnx('throttle_max_avg', throttle_max_avg)
 
         self.redis.setnx('container_expire_secs',
-                         config['full_container_expire_secs'])
+                         config['container_expire_secs'])
 
         self.duration = int(self.redis.get('container_expire_secs'))
 
@@ -164,14 +162,14 @@ class DockerController(object):
     def sid(self, id):
         return id[:12]
 
-    def timed_new_container(self, browser, env, host, client_id):
+    def timed_new_container(self, browser, env, host, reqid):
         start = time.time()
         info = self.new_container(browser, env, host)
         end = time.time()
         dur = end - start
 
-        time_key = 't:' + client_id
-        self.redis.setex(time_key, self.T_EXPIRE_TIME, dur)
+        time_key = 't:' + reqid
+        self.redis.setex(time_key, self.throttle_expire_secs, dur)
 
         throttle_samples = int(self.redis.get('throttle_samples'))
         print('INIT DUR: ' + str(dur))
@@ -195,7 +193,7 @@ class DockerController(object):
         if browser.get('req_height'):
             env['SCREEN_HEIGHT'] = browser.get('req_height')
 
-        image = browser['image_name']
+        image = browser['tags'][0]
         print('Launching ' + image)
 
         short_id = None
@@ -204,9 +202,10 @@ class DockerController(object):
             host_config = self.create_host_config()
 
             container = self.cli.create_container(image=image,
-                                                  ports=[self.VNC_PORT, self.CMD_PORT],
+                                                  ports=[self.vnc_port, self.cmd_port],
                                                   environment=env,
                                                   host_config=host_config,
+                                                  labels={self.label_name: self.name},
                                                   )
             id_ = container.get('Id')
             short_id = self.sid(id_)
@@ -220,8 +219,8 @@ class DockerController(object):
 
             self.redis.hset('all_containers', short_id, ip)
 
-            vnc_host = self._get_host_port(info, self.VNC_PORT, default_host)
-            cmd_host = self._get_host_port(info, self.CMD_PORT, default_host)
+            vnc_host = self._get_host_port(info, self.vnc_port, default_host)
+            cmd_host = self._get_host_port(info, self.cmd_port, default_host)
 
             print(ip)
             print(vnc_host)
@@ -247,8 +246,8 @@ class DockerController(object):
             volumes_from = None
 
         host_config = self.cli.create_host_config(
-                                 port_bindings={self.VNC_PORT: None,
-                                                self.CMD_PORT: None},
+                                 port_bindings={self.vnc_port: None,
+                                                self.cmd_port: None},
                                  volumes_from=volumes_from,
                                  network_mode=self.network_name,
                                  cap_add=['ALL'],
@@ -284,17 +283,25 @@ class DockerController(object):
         if event['Type'] != 'container':
             return
 
-        if event['status'] == 'die' and event['from'].startswith(self.browser_image_prefix):
+        if (event['status'] == 'die' and
+            event['from'].startswith(self.browser_image_prefix) and
+            event['Actor']['Attributes'].get(self.label_name) == self.name):
+
             short_id = self.sid(event['id'])
             print('EXITED: ' + short_id)
+
             self.remove_container(short_id)
             self.redis.decr('num_containers')
             return
 
-        if event['status'] == 'start' and event['from'].startswith(self.browser_image_prefix):
-            self.redis.incr('num_containers')
+        if (event['status'] == 'start' and
+            event['from'].startswith(self.browser_image_prefix) and
+            event['Actor']['Attributes'].get(self.label_name) == self.name):
+
             short_id = self.sid(event['id'])
             print('STARTED: ' + short_id)
+
+            self.redis.incr('num_containers')
             self.redis.setex('ct:' + short_id, self.duration, 1)
             return
 
@@ -338,39 +345,30 @@ class DockerController(object):
         except Exception as e:
             traceback.print_exc()
 
-    def add_new_client(self):
+    def add_new_client(self, reqid):
         client_id = self.redis.incr('clients')
-        enc_id = base64.b64encode(os.urandom(27)).decode('utf-8')
-        self.redis.setex('cm:' + enc_id, self.Q_EXPIRE_TIME, client_id)
-        self.redis.setex('q:' + str(client_id), self.Q_EXPIRE_TIME, 1)
-        return enc_id, client_id
+        #enc_id = base64.b64encode(os.urandom(27)).decode('utf-8')
+        self.redis.setex('cm:' + reqid, self.queue_expire_secs, client_id)
+        self.redis.setex('q:' + str(client_id), self.queue_expire_secs, 1)
+        return client_id
 
     def register_request(self, container_data):
-        upsid = base64.b64encode(os.urandom(6)).decode('utf-8')
+        reqid = base64.b64encode(os.urandom(6)).decode('utf-8')
 
         if not container_data:
-            container_data['upsid'] = upsid
+            container_data['reqid'] = reqid
 
-        self.redis.hmset('ups:' + upsid, container_data)
-        self.redis.expire('ups:' + upsid, 120)
+        self.redis.hmset('req:' + reqid, container_data)
+        self.redis.expire('req:' + reqid, self.req_expire_secs)
+        return reqid
 
-    def is_valid_request(self, upsid):
-        old_key = 'ups:' + upsid
-
-        upstream_url = self.redis.hget(old_key, 'upstream_url')
-        if not upstream_url:
-            return None
-
-        return old_key
-
-    def am_i_next(self, enc_id):
-        client_id = None
-        if enc_id:
-            self.redis.expire('cm:' + enc_id, self.Q_EXPIRE_TIME)
-            client_id = self.redis.get('cm:' + enc_id)
+    def am_i_next(self, reqid):
+        client_id = self.redis.get('cm:' + reqid)
 
         if not client_id:
-            enc_id, client_id = self.add_new_client()
+            client_id = self.add_new_client(reqid)
+        else:
+            self.redis.expire('cm:' + reqid, self.queue_expire_secs)
 
         client_id = int(client_id)
         next_client = int(self.redis.get('next_client'))
@@ -384,27 +382,27 @@ class DockerController(object):
 
             # missed your number somehow, get a new one!
             if client_id < next_client:
-                enc_id, client_id = self.add_new_client()
+                client_id = self.add_new_client(reqid)
 
         diff = client_id - next_client
 
         if self.throttle():
-            self.redis.expire('q:' + str(client_id), self.Q_EXPIRE_TIME)
-            return enc_id, client_id - next_client
+            self.redis.expire('q:' + str(client_id), self.queue_expire_secs)
+            return client_id - next_client
 
         #num_containers = self.redis.hlen('all_containers')
         num_containers = int(self.redis.get('num_containers'))
 
         max_containers = self.redis.get('max_containers')
-        max_containers = int(max_containers) if max_containers else self.MAX_CONT
+        max_containers = int(max_containers) if max_containers else self.max_containers
 
         if diff <= (max_containers - num_containers):
             self.redis.incr('next_client')
-            return enc_id, -1
+            return -1
 
         else:
-            self.redis.expire('q:' + str(client_id), self.Q_EXPIRE_TIME)
-            return enc_id, client_id - next_client
+            self.redis.expire('q:' + str(client_id), self.queue_expire_secs)
+            return client_id - next_client
 
     def throttle(self):
         timings = self.redis.lrange('init_timings', 0, -1)
@@ -433,19 +431,44 @@ class DockerController(object):
 
         return False
 
-    def do_init(self, browser, url, ts, host, client_id,
-                width=None, height=None):
+    def _copy_env(self, env, name, override=None):
+        env[name] = override or os.environ.get(name)
+
+    def init_new_browser(self, reqid, host, width=None, height=None):
+        req_key = 'req:' + reqid
+
+        container_data = self.redis.hgetall(req_key)
+
+        if not container_data:
+            return None
+
+        queue_pos = self.am_i_next(reqid)
+
+        if queue_pos >= 0:
+            return {'queue': queue_pos}
+
+        browser = container_data['browser']
+        url = container_data['url']
+        ts = container_data['ts']
+
         env = {}
+
         env['URL'] = url
         env['TS'] = ts
         env['BROWSER'] = browser
-        env['PROXY_HOST_PORT'] = self.PROXY_HOST_PORT
-        env['SCREEN_WIDTH'] = width or os.environ.get('SCREEN_WIDTH')
-        env['SCREEN_HEIGHT'] = height or os.environ.get('SCREEN_HEIGHT')
-        #env['REDIS_BROWSER_URL'] = self.REDIS_BROWSER_URL
 
-        info = self.timed_new_container(browser, env, host, client_id)
+        self._copy_env(env, 'PROXY_HOST')
+        self._copy_env(env, 'PROXY_PORT')
+        self._copy_env(env, 'SCREEN_WIDTH', width)
+        self._copy_env(env, 'SCREEN_HEIGHT', height)
+
+        info = self.timed_new_container(browser, env, host, reqid)
         info['queue'] = 0
+
+        new_key = 'ip:' + info['ip']
+        self.redis.rename(req_key, new_key)
+        self.redis.persist(new_key)
+
         return info
 
     def get_random_browser(self):

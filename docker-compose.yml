@@ -1,0 +1,30 @@
+version: '2'
+
+services:
+    shepherd:
+        build: ./shepherd
+
+        environment:
+            - REDIS_URL=redis://redis/0
+            - CLUSTER_NAME=test
+            - NETWORK_NAME=browsers_default
+            - BROWSER_VOLUMES=browsers_browser_volumes_1
+
+        depends_on:
+            - redis
+
+        volumes:
+            - /var/run/docker.sock:/var/run/docker.sock
+
+        ports:
+            - 9020:9020
+
+    redis:
+        image: redis:2.8.21
+
+    browser_volumes:
+        image: busybox
+
+        volumes:
+            - ./shepherd/browser_app.py:/app/browser_app.py
+        

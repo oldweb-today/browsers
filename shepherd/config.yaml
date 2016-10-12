@@ -6,22 +6,19 @@ browser_config:
 
     max_containers: 100
 
-    init_container_expire_secs: 30
-    full_container_expire_secs: 600
-
     throttle_max_avg: 0.60
     throttle_samples: 10
     throttle_expire_secs: 60
 
+    container_expire_secs: 600
+    req_expire_secs: 30
     queue_expire_secs: 30
     remove_expired_secs: 30
 
     browser_image_prefix: webrecorder/browser-
-    network_name: webrecorder_browsers
-    volume_source: webrecorder_browser_volumes_1
+    label_name: wr.shepherd_name
     label_browser: wr.browser
     label_prefix: wr.
 
-    default_browser: ch-53-lin
+    default_browser: chrome
 
-    label:

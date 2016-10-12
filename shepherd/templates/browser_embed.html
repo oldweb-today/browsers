@@ -3,13 +3,11 @@
 
 <head>
 <script src="{{ STATIC_PREFIX }}/novnc/util.js"></script>
+<script src="{{ STATIC_PREFIX }}/jquery-2.1.4.min.js"></script>
 <script src="{{ STATIC_PREFIX }}/browser_controller.js"></script>
 
 <script>
-window.url = decodeURI("{{ container_data.url }}");
-window.curr_ts = "{{ container_data.ts }}";
-window.browser = "{{ container_data.browser }}";
-window.upsid = "{{ container_data.upsid }}";
+window.reqid = "{{ container_data.reqid }}";
 </script>
 
 </head>
