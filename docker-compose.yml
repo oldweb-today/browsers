@@ -5,10 +5,9 @@ services:
         build: ./shepherd
 
         environment:
-            - REDIS_URL=redis://redis/0
-            - CLUSTER_NAME=test
+            - REDIS_BROWSER_URL=redis://redis/0
+            - CLUSTER_NAME=browser_shepherd
             - NETWORK_NAME=browsers_default
-            - BROWSER_VOLUMES=browsers_browser_volumes_1
 
         depends_on:
             - redis
