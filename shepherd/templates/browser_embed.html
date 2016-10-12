@@ -2,26 +2,22 @@
 <html>
 
 <head>
-<script src="{{ STATIC_PREFIX }}/novnc/util.js"></script>
-<script src="{{ STATIC_PREFIX }}/jquery-2.1.4.min.js"></script>
-<script src="{{ STATIC_PREFIX }}/browser_controller.js"></script>
+<script src="/static/jquery-2.1.4.min.js"></script>
+<script src="/static/browser_controller.js"></script>
 
 <script>
 window.reqid = "{{ container_data.reqid }}";
+
+$(function() {
+  var cb = new CBrowser("#browser");
+});
+
 </script>
 
 </head>
 
 <body>
-
-<div class="browser">
-    <div id="browserMsg" class="loading">Initializing Browser...</div>
-    <div id="noVNC_screen">
-        <canvas id="noVNC_canvas" style="display: none">
-            Canvas not supported.
-        </canvas>
-    </div>
-</div>
-
+<div id="browser"></div>
 </body>
+
 </html>

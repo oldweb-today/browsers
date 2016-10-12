@@ -1,29 +1,65 @@
-if (window.STATIC_PREFIX) {
-    window.INCLUDE_URI = window.STATIC_PREFIX + "novnc/";
-} else{
-    window.INCLUDE_URI = "/static/novnc/";
-}
+var CBrowser = function(target_div, static_prefix) {
+    var cmd_host = undefined;
+    var vnc_host = undefined;
 
-var cmd_host = undefined;
-var vnc_host = undefined;
+    var connected = false;
 
-var connected = false;
+    var fail_count = 0;
 
-var fail_count = 0;
+    var rfb;
+    var resizeTimeout;
 
-var rfb;
-var resizeTimeout;
+    var end_time = undefined;
+    var cid = undefined;
+    var waiting_for_container = false;
 
-var end_time = undefined;
-var cid = undefined;
-var waiting_for_container = false;
+    function start() {
+        if (!window.INCLUDE_URI) {
+            if (!static_prefix) {
+                static_prefix = "/static/";
+            }
 
-// Load supporting scripts
-Util.load_scripts(["webutil.js", "base64.js", "websock.js", "des.js",
-                   "keysymdef.js", "keyboard.js", "input.js", "display.js",
-                   "inflator.js", "rfb.js", "keysym.js"]);
+            window.INCLUDE_URI = static_prefix + "novnc/";
 
-$(function() {
+            $.getScript(window.INCLUDE_URI + "util.js", function() {
+                // Load supporting scripts
+                Util.load_scripts(["webutil.js", "base64.js", "websock.js", "des.js",
+                                   "keysymdef.js", "keyboard.js", "input.js", "display.js",
+                                   "inflator.js", "rfb.js", "keysym.js"]);
+            });
+        }
+
+        // Countdown updater
+        //cid = setInterval(update_countdown, 1000);
+        init_html(target_div);
+
+        init_container();
+    }
+
+    function canvas() {
+        return $("canvas", target_div);
+    }
+
+    function msgdiv() {
+        return $("#browserMsg", target_div);
+    }
+
+    function screen() {
+        return $("#noVNC_screen", target_div);
+    }
+
+    function init_html() {
+        $(target_div).append($("<div>", {"id": "browserMsg", "class": "loading"}).text("Initializing Browser..."));
+        $(target_div).append($("<div>", {"id": "noVNC_screen"}).append("<canvas>"));
+
+        canvas().hide();
+
+        screen().blur(lose_focus);
+        screen().mouseleave(lose_focus);
+
+        screen().mouseenter(grab_focus);
+    }
+
     function init_container() {
         var params = {};
 
@@ -54,48 +90,48 @@ $(function() {
                 fail_count++;
 
                 if (fail_count <= 3) {
-                    $("#browserMsg").text("Retrying browser init...");
+                    msgdiv().text("Retrying browser init...");
                     setTimeout(send_request, 5000);
                 } else {
-                    $("#browserMsg").text("Failed to init browser... Please try again later");
+                    msgdiv().text("Failed to init browser... Please try again later");
                 }
-                $("#browserMsg").show();
+                msgdiv().show();
             }).complete(function() {
                 waiting_for_container = false;
             });
         }
 
-        function handle_browser_response(data) {
-            qid = data.id;
-
-            if (data.cmd_host && data.vnc_host) {
-                cmd_host = data.cmd_host;
-                vnc_host = data.vnc_host;
-
-                //RecordingSizeWidget.setBrowserIP(data.ip);
-
-                window.setTimeout(do_init, 1000);
-
-            } else if (data.queue != undefined) {
-                var msg = "Waiting for empty slot... ";
-                if (data.queue == 0) {
-                    msg += "<b>You are next!</b>";
-                } else {
-                    msg += "At most <b>" + data.queue + " user(s)</b> ahead of you";
-                }
-                $("#browserMsg").html(msg);
-
-                window.setTimeout(send_request, 3000);
-            }
-        }
-
         send_request();
     }
 
-    function do_init() {
+    function handle_browser_response(data) {
+        qid = data.id;
+
+        if (data.cmd_host && data.vnc_host) {
+            cmd_host = data.cmd_host;
+            vnc_host = data.vnc_host;
+
+            //RecordingSizeWidget.setBrowserIP(data.ip);
+
+            window.setTimeout(try_init_vnc, 1000);
+
+        } else if (data.queue != undefined) {
+            var msg = "Waiting for empty slot... ";
+            if (data.queue == 0) {
+                msg += "<b>You are next!</b>";
+            } else {
+                msg += "At most <b>" + data.queue + " user(s)</b> ahead of you";
+            }
+            msgdiv().html(msg);
+
+            window.setTimeout(send_request, 3000);
+        }
+    }
+
+    function try_init_vnc() {
         var res = do_vnc();
         if (!res) {
-            window.setTimeout(do_init, 1000);
+            window.setTimeout(try_init_vnc, 1000);
         }
     }
 
@@ -111,18 +147,12 @@ $(function() {
         rfb.get_mouse().set_focused(true);
     }
 
-    $("#noVNC_screen").blur(lose_focus);
-    $("#noVNC_screen").mouseleave(lose_focus);
-
-    $("#noVNC_screen").mouseenter(grab_focus);
-
-    $("#datetime").click(lose_focus);
-
     function UIresize() {
         if (WebUtil.getQueryVar('resize', false)) {
             var innerW = window.innerWidth;
             var innerH = window.innerHeight;
-            var controlbarH = $D('noVNC_status_bar').offsetHeight;
+            //var controlbarH = $D('noVNC_status_bar').offsetHeight;
+            var controlH = 0;
             var padding = 5;
             if (innerW !== undefined && innerH !== undefined)
                 rfb.setDesktopSize(innerW, innerH - controlbarH - padding);
@@ -131,7 +161,7 @@ $(function() {
 
     function clientPosition() {
         var hh = $('header').height();
-        var c = $('#noVNC_canvas');
+        var c = screen();
         var ch = c.height();
         var cw = c.width();
         c.css({
@@ -164,7 +194,7 @@ $(function() {
 
     function do_vnc() {
         try {
-            rfb = new RFB({'target':       $D('noVNC_canvas'),
+            rfb = new RFB({'target':       canvas()[0],
                            'encrypt':      WebUtil.getQueryVar('encrypt',
                                                                (window.location.protocol === "https:")),
                            'repeaterID':   WebUtil.getQueryVar('repeaterID', ''),
@@ -173,8 +203,8 @@ $(function() {
                            'shared':       WebUtil.getQueryVar('shared', true),
                            'view_only':    WebUtil.getQueryVar('view_only', false),
                            'onUpdateState':  updateState,
-                           'onClipboard': onVNCCopyCut,
-                           'onFBUComplete': FBUComplete});
+                           'onClipboard':    onVNCCopyCut,
+                           'onFBUComplete':  FBUComplete});
         } catch (exc) {
             //updateState(null, 'fatal', null, 'Unable to create RFB client -- ' + exc);
             console.warn(exc);
@@ -206,14 +236,14 @@ $(function() {
         } else if (state == "disconnected") {
             if (connected) {
                 connected = false;
-                $("#noVNC_canvas").hide();
-                $("#browserMsg").show();
+                canvas().hide();
+                msgdiv().show();
 
                 init_container();
             }
         } else if (state == "normal") {
-            $("#noVNC_canvas").show();
-            $("#browserMsg").hide();
+            canvas().show();
+            msgdiv().hide();
 
             connected = true;
             fail_count = 0;
@@ -256,13 +286,8 @@ $(function() {
         $("#expire").text(min + ":" + sec);
     }
 
-    // Countdown updater
-    cid = setInterval(update_countdown, 1000);
-
-    // INIT
-    init_container();
-
-});
+    start();
+};
 
 
 
