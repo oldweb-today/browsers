@@ -59,7 +59,7 @@ class DockerController(object):
             self.cli = Client(**kwargs)
 
     def _init_redis(self, config):
-        redis_url = os.environ['REDIS_URL']
+        redis_url = os.environ['REDIS_BROWSER_URL']
 
         self.redis = redis.StrictRedis.from_url(redis_url, decode_responses=True)
 
@@ -448,8 +448,8 @@ class DockerController(object):
             return {'queue': queue_pos}
 
         browser = container_data['browser']
-        url = container_data['url']
-        ts = container_data['ts']
+        url = container_data.get('url', 'about:blank')
+        ts = container_data.get('request_ts')
 
         env = {}
 

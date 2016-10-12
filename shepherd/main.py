@@ -23,7 +23,7 @@ def load_template(browser, url):
     container_data = {
         'url': url,
         'browser': browser,
-        'ts': 'now',
+        'request_ts': 'now',
     }
 
     reqid = request.query.getunicode('reqid')
@@ -37,15 +37,27 @@ def load_template(browser, url):
            }
 
 @route('/request_browser/<browser>', method='POST')
-def request_browser():
+def request_browser(browser):
     """
 request a new browser with specified container data
 should include: url and ts, other params as needed
 """
-    container_data = dict(request.forms.decode())
-    container_data['browser'] = browser
-    reqid = dc.register_request(container_data)
-    return {'reqid': reqid}
+    try:
+        if not dc.load_browser(browser):
+            return {'error': 'Browser Not Found'}
+
+        container_data = dict(request.forms.decode())
+        container_data['browser'] = browser
+
+        reqid = dc.register_request(container_data)
+
+        return {'reqid': reqid}
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+
+        return {'error_message': str(e)}
 
 
 @route(['/browsers'])
@@ -97,7 +109,7 @@ def init_container():
 
 @route('/static/<filepath:path>')
 def server_static(filepath):
-    return static_file(filepath, root='/app/static/')
+    return static_file(filepath, root='./static/')
 
 
 # ======================

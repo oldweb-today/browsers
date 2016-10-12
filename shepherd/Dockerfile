@@ -1,13 +1,15 @@
 FROM python:3.5.2
 MAINTAINER Ilya Kreymer <ikreymer at gmail.com>
 
-WORKDIR /app
+WORKDIR /shepherd
 
-ADD requirements.txt /app/
+ADD requirements.txt /shepherd/
 
 RUN pip install -r requirements.txt
 
-ADD . /app/
+ADD . /shepherd/
+
+VOLUME /shepherd/static/
 
 CMD ["uwsgi", "uwsgi.ini"]
 

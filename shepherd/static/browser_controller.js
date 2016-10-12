@@ -1,4 +1,4 @@
-var CBrowser = function(target_div, static_prefix) {
+var CBrowser = function(target_div, static_prefix, on_connect) {
     var cmd_host = undefined;
     var vnc_host = undefined;
 
@@ -111,7 +111,9 @@ var CBrowser = function(target_div, static_prefix) {
             cmd_host = data.cmd_host;
             vnc_host = data.vnc_host;
 
-            //RecordingSizeWidget.setBrowserIP(data.ip);
+            if (on_connect) {
+                on_connect(data);
+            }
 
             window.setTimeout(try_init_vnc, 1000);
 

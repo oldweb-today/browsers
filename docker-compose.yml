@@ -22,9 +22,4 @@ services:
     redis:
         image: redis:2.8.21
 
-    browser_volumes:
-        image: busybox
 
-        volumes:
-            - ./shepherd/browser_app.py:/app/browser_app.py
-        
