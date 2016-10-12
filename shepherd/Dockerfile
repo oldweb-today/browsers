@@ -7,9 +7,7 @@ ADD requirements.txt /app/
 
 RUN pip install -r requirements.txt
 
-ADD main.py /app/
-ADD dockercontroller.py /app/
-ADD uwsgi.ini /app/
+ADD . /app/
 
 CMD ["uwsgi", "uwsgi.ini"]
 

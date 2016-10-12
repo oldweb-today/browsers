@@ -19,32 +19,9 @@ browser_config:
     browser_image_prefix: webrecorder/browser-
     network_name: webrecorder_browsers
     volume_source: webrecorder_browser_volumes_1
+    label_browser: wr.browser
+    label_prefix: wr.
 
     default_browser: ch-53-lin
 
-    browsers:
-        -
-            id: ch-53-lin
-            image_name: chrome
-            name: Chrome
-            os: linux
-            version: '53'
-            release: '2016-09-30'
-            icon: 'firefox.png'
-            about: 'https://en.wikipedia.org/wiki/Firefox'
-            capabilities:
-                - flash
-                - mp3
-        -
-            id: ff-49-lin
-            image_name: firefox
-            name: Firefox
-            os: linux
-            version: '49'
-            release: '2016-09-23'
-            icon: 'chrome.png'
-            about: 'https://en.wikipedia.org/wiki/Google_Chrome'
-            capabilities:
-                - flash
-
-
+    label:

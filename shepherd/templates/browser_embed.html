@@ -1,49 +1,20 @@
-{% extends "base_bootstrap.html" %}
-{% block head %}
+<!DOCTYPE>
+<html>
 
-{{ super() }}
-<script src="/static/__shared/novnc/util.js"></script>
+<head>
+<script src="{{ STATIC_PREFIX }}/novnc/util.js"></script>
+<script src="{{ STATIC_PREFIX }}/browser_controller.js"></script>
+
 <script>
-    wbinfo = {}
-    wbinfo.outer_prefix = decodeURI("{{ top_prefix }}");
-    wbinfo.url = "{{ url }}";
-    wbinfo.capture_url = wbinfo.url;
-    wbinfo.timestamp = "{{ ts }}";
-    wbinfo.state = "{{ curr_mode }}";
-    wbinfo.info = {{ info | default('{}') | tojson }};
-</script>
-<script>
-    window.STATIC_PREFIX = "/static/__shared/";
-    {% if browser_data %}
-    window.cnt_browser = "{{ browser_data.id }}";
-    {% endif %}
-    var browser = "{{ browser }}";
-    var url = "{{ url }}";
-    var curr_ts = "{{ ts }}";
-    var upsid = "{{ upsid }}";
+window.url = decodeURI("{{ container_data.url }}");
+window.curr_ts = "{{ container_data.ts }}";
+window.browser = "{{ container_data.browser }}";
+window.upsid = "{{ container_data.upsid }}";
 </script>
 
-{% assets "main-css" %}
-<link href="{{ ASSET_URL }}" rel="stylesheet" />
-{% endassets %}
+</head>
 
-{% assets "browser-js" %}
-<script type="text/javascript" src="{{ ASSET_URL }}"></script>
-{% endassets %}
-
-{#
-<script src="/static/__shared/collections_model.js"></script>
-<script src="/static/__shared/recordings_model.js"></script>
-<script src="/static/__shared/recordings.js"></script>
-<script src="/static/__shared/browser_controller.js"></script>
-
-<script src="/static/__shared/times_and_sizes_formatter.js"></script>
-#}
-{% endblock %}
-
-{% block body %}
-
-{% include 'header.html' %}
+<body>
 
 <div class="browser">
     <div id="browserMsg" class="loading">Initializing Browser...</div>
@@ -54,5 +25,5 @@
     </div>
 </div>
 
-{% endblock %}
-
+</body>
+</html>
