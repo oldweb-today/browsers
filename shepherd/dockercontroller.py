@@ -9,6 +9,8 @@ import yaml
 import random
 import traceback
 
+from redis.exceptions import BusyLoadingError
+
 
 #=============================================================================
 class DockerController(object):
@@ -61,7 +63,13 @@ class DockerController(object):
     def _init_redis(self, config):
         redis_url = os.environ['REDIS_BROWSER_URL']
 
-        self.redis = redis.StrictRedis.from_url(redis_url, decode_responses=True)
+        while True:
+            try:
+                self.redis = redis.StrictRedis.from_url(redis_url, decode_responses=True)
+                break
+            except BusyLoadingError:
+                print('Waiting for Redis to Load...')
+                time.sleep(5)
 
         self.redis.setnx('next_client', '1')
         self.redis.setnx('max_containers', self.max_containers)

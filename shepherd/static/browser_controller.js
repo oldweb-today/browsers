@@ -16,6 +16,7 @@ var CBrowser = function(target_div, init_params) {
     var api_prefix = init_params.api_prefix || "";
     var on_connect = init_params.on_connect;
     var static_prefix = init_params.static_prefix;
+    var proxy_ws = init_params.proxy_ws;
 
     function start() {
         if (!window.INCLUDE_URI) {
@@ -221,6 +222,18 @@ var CBrowser = function(target_div, init_params) {
         var port = hostport[1];
         var password = "secret";
         var path = "websockify";
+
+        // Proxy WS via the origin host, instead of making direct conn
+        // 'proxy_ws' specifies the proxy path, port is appended
+        if (proxy_ws) {
+            path = proxy_ws + port;
+            host = window.location.hostname;
+
+            port = window.location.port;
+            if (!port) {
+                port = (window.location.protocol == "https:" ? 443 : 80);
+            }
+        }
 
         try {
             rfb.connect(host, port, password, path);
