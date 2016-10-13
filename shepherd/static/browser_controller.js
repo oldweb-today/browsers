@@ -1,4 +1,4 @@
-var CBrowser = function(target_div, static_prefix, on_connect) {
+var CBrowser = function(target_div, init_params) {
     var cmd_host = undefined;
     var vnc_host = undefined;
 
@@ -12,6 +12,10 @@ var CBrowser = function(target_div, static_prefix, on_connect) {
     var end_time = undefined;
     var cid = undefined;
     var waiting_for_container = false;
+
+    var api_prefix = init_params.api_prefix || "";
+    var on_connect = init_params.on_connect;
+    var static_prefix = init_params.static_prefix;
 
     function start() {
         if (!window.INCLUDE_URI) {
@@ -82,8 +86,7 @@ var CBrowser = function(target_div, static_prefix, on_connect) {
 
             waiting_for_container = true;
 
-            //var init_url = "/api/v1/browsers/init_browser?" + $.param(params);
-            var init_url = "/init_browser?" + $.param(params);
+            var init_url = api_prefix + "/init_browser?" + $.param(params);
 
             $.getJSON(init_url, handle_browser_response)
             .fail(function() {
@@ -163,7 +166,7 @@ var CBrowser = function(target_div, static_prefix, on_connect) {
 
     function clientPosition() {
         var hh = $('header').height();
-        var c = screen();
+        var c = canvas();
         var ch = c.height();
         var cw = c.width();
         c.css({

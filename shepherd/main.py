@@ -43,7 +43,8 @@ request a new browser with specified container data
 should include: url and ts, other params as needed
 """
     try:
-        if not dc.load_browser(browser):
+        browser_data = dc.load_browser(browser)
+        if not browser_data:
             return {'error': 'Browser Not Found'}
 
         container_data = dict(request.forms.decode())
@@ -51,7 +52,8 @@ should include: url and ts, other params as needed
 
         reqid = dc.register_request(container_data)
 
-        return {'reqid': reqid}
+        return {'reqid': reqid,
+                'id': browser_data['id']}
 
     except Exception as e:
         import traceback
@@ -81,7 +83,7 @@ def get_browser_icon(name):
     """
 Load icon for browser using wr.icon metadata
 """
-    res = dc.load_browser(name)
+    res = dc.load_browser(name, True)
     if not res:
         raise HTTPError(404, 'Browser Not Found')
 

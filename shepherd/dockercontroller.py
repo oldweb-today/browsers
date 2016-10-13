@@ -91,7 +91,8 @@ class DockerController(object):
         if params:
             all_filters = []
             for k, v in params.items():
-                all_filters.append(self.label_prefix + k + '=' + v)
+                if k not in ('short'):
+                    all_filters.append(self.label_prefix + k + '=' + v)
             filters["label"] = all_filters
         else:
             filters["label"] = self.label_browser
@@ -106,7 +107,8 @@ class DockerController(object):
                 if not id_:
                     continue
 
-                props = self._browser_info(tags, image['Labels'])
+                props = self._browser_info(image['Labels'])
+                props['id'] = id_
 
                 browsers[id_] = props
 
@@ -128,25 +130,40 @@ class DockerController(object):
 
         return None
 
-    def load_browser(self, name):
+    def load_browser(self, name, include_icon=False):
         tag = self.browser_image_prefix + name
 
         try:
             image = self.cli.inspect_image(tag)
             tags = image.get('RepoTags')
-            props = self._browser_info(tags, image['Config']['Labels'])
+            props = self._browser_info(image['Config']['Labels'], include_icon=include_icon)
+            props['id'] = self._get_primary_id(tags)
+            props['tags'] = tags
             return props
 
         except:
             traceback.print_exc()
             return {}
 
-    def _browser_info(self, tags, labels):
-        props = {'tags': tags}
+    def _browser_info(self, labels, include_icon=False):
+        props = {}
+        caps = []
         for n, v in labels.items():
             wr_prop = n.split(self.label_prefix)
-            if len(wr_prop) == 2:
-                props[wr_prop[1]] = v
+            if len(wr_prop) != 2:
+                continue
+
+            name = wr_prop[1]
+
+            if not include_icon and name == 'icon':
+                continue
+
+            props[name] = v
+
+            if name.startswith('caps.'):
+                caps.append(name.split('.', 1)[1])
+
+        props['caps'] = ', '.join(caps)
 
         return props
 
@@ -450,6 +467,8 @@ class DockerController(object):
         browser = container_data['browser']
         url = container_data.get('url', 'about:blank')
         ts = container_data.get('request_ts')
+
+        print('ID', browser)
 
         env = {}
 

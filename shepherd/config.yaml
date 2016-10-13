@@ -17,7 +17,7 @@ browser_config:
 
     browser_image_prefix: webrecorder/browser-
     label_name: wr.shepherd_name
-    label_browser: wr.browser
+    label_browser: wr.name
     label_prefix: wr.
 
     default_browser: chrome
