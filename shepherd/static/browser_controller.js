@@ -6,6 +6,9 @@ var CBrowser = function(target_div, init_params) {
 
     var fail_count = 0;
 
+    var min_width = 800;
+    var min_height = 600;
+
     var rfb;
     var resizeTimeout;
 
@@ -76,8 +79,8 @@ var CBrowser = function(target_div, init_params) {
         var w = window.innerWidth * 0.96;
         var h = window.innerHeight - (25 + hh);
 
-        req_params['width'] = Math.max(w, 800);
-        req_params['height'] = Math.max(h, 600);
+        req_params['width'] = Math.max(w, min_width);
+        req_params['height'] = Math.max(h, min_height);
         req_params['width'] = parseInt(req_params['width'] / 16) * 16;
         req_params['height'] = parseInt(req_params['height'] / 16) * 16;
 
@@ -192,6 +195,10 @@ var CBrowser = function(target_div, init_params) {
 
     function FBUComplete(rfb, fbu) {
         UIresize();
+
+        if(window.innerWidth < min_width || window.innerHeight < min_height)
+            clientResize();
+
         clientPosition();
         rfb.set_onFBUComplete(function() { });
     }
