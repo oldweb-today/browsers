@@ -26,8 +26,10 @@ class DockerController(object):
         self.name = os.environ.get('CLUSTER_NAME', '')
         self.label_name = config['label_name']
 
-        self.req_expire_secs = config['req_expire_secs']
+        self.init_req_expire_secs = config['init_req_expire_secs']
         self.queue_expire_secs = config['queue_expire_secs']
+
+        self.remove_expired_secs = config['remove_expired_secs']
 
         self.api_version = config['api_version']
 
@@ -39,6 +41,7 @@ class DockerController(object):
         self.throttle_expire_secs = config['throttle_expire_secs']
 
         self.browser_image_prefix = config['browser_image_prefix']
+
         self.label_browser = config['label_browser']
         self.label_prefix = config['label_prefix']
 
@@ -184,6 +187,11 @@ class DockerController(object):
 
         return host + ':' + info['HostPort']
 
+    def _get_port(self, info, port):
+        info = info['NetworkSettings']['Ports'][str(port) + '/tcp']
+        info = info[0]
+        return info['HostPort']
+
     def sid(self, id):
         return id[:12]
 
@@ -286,7 +294,10 @@ class DockerController(object):
         except Exception as e:
             print(e)
 
+        reqid = None
         ip = self.redis.hget('all_containers', short_id)
+        if ip:
+            reqid = self.redis.hget('ip:' + ip, 'reqid')
 
         with redis.utils.pipeline(self.redis) as pi:
             pi.delete('ct:' + short_id)
@@ -296,6 +307,8 @@ class DockerController(object):
 
             pi.hdel('all_containers', short_id)
             pi.delete('ip:' + ip)
+            if reqid:
+                pi.delete('req:' + reqid)
 
     def event_loop(self):
         for event in self.cli.events(decode=True):
@@ -337,7 +350,7 @@ class DockerController(object):
             except Exception as e:
                 print(e)
 
-            time.sleep(30)
+            time.sleep(self.remove_expired_secs)
 
     def remove_expired(self):
         all_known_ids = self.redis.hkeys('all_containers')
@@ -377,14 +390,16 @@ class DockerController(object):
         self.redis.setex('q:' + str(client_id), self.queue_expire_secs, 1)
         return client_id
 
-    def register_request(self, container_data):
-        reqid = base64.b64encode(os.urandom(6)).decode('utf-8')
+    def _make_reqid(self):
+        return base64.b32encode(os.urandom(15)).decode('utf-8')
 
-        if not container_data:
-            container_data['reqid'] = reqid
+    def register_request(self, container_data):
+        reqid = self._make_reqid()
+
+        container_data['reqid'] = reqid
 
         self.redis.hmset('req:' + reqid, container_data)
-        self.redis.expire('req:' + reqid, self.req_expire_secs)
+        self.redis.expire('req:' + reqid, self.init_req_expire_secs)
         return reqid
 
     def am_i_next(self, reqid):
@@ -467,6 +482,10 @@ class DockerController(object):
         if not container_data:
             return None
 
+        # already started, attempt to reconnect
+        if 'queue' in container_data:
+            return container_data
+
         queue_pos = self.am_i_next(reqid)
 
         if queue_pos >= 0:
@@ -475,8 +494,6 @@ class DockerController(object):
         browser = container_data['browser']
         url = container_data.get('url', 'about:blank')
         ts = container_data.get('request_ts')
-
-        print('ID', browser)
 
         env = {}
 
@@ -493,8 +510,16 @@ class DockerController(object):
         info['queue'] = 0
 
         new_key = 'ip:' + info['ip']
-        self.redis.rename(req_key, new_key)
-        self.redis.persist(new_key)
+
+        # TODO: support different durations?
+        self.duration = int(self.redis.get('container_expire_secs'))
+
+        with redis.utils.pipeline(self.redis) as pi:
+            pi.rename(req_key, new_key)
+            pi.persist(new_key)
+
+            pi.hmset(req_key, info)
+            pi.expire(req_key, self.duration)
 
         return info
 

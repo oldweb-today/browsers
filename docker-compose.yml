@@ -2,6 +2,7 @@ version: '2'
 
 services:
     shepherd:
+        image: webrecorder/shepherd
         build: ./shepherd
 
         command: uwsgi uwsgi.ini --mount /=/shepherd/main.py

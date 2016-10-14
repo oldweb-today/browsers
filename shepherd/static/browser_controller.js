@@ -13,10 +13,15 @@ var CBrowser = function(target_div, init_params) {
     var cid = undefined;
     var waiting_for_container = false;
 
+    init_params = init_params || {};
+
     var api_prefix = init_params.api_prefix || "";
     var on_connect = init_params.on_connect;
     var static_prefix = init_params.static_prefix;
     var proxy_ws = init_params.proxy_ws;
+
+    var req_params = {};
+
 
     function start() {
         if (!window.INCLUDE_URI) {
@@ -66,46 +71,44 @@ var CBrowser = function(target_div, init_params) {
     }
 
     function init_container() {
-        var params = {};
-
         // calculate dimensions
         var hh = $('header').height();
         var w = window.innerWidth * 0.96;
         var h = window.innerHeight - (25 + hh);
 
-        params['width'] = Math.max(w, 800);
-        params['height'] = Math.max(h, 600);
-        params['width'] = parseInt(params['width'] / 16) * 16;
-        params['height'] = parseInt(params['height'] / 16) * 16;
+        req_params['width'] = Math.max(w, 800);
+        req_params['height'] = Math.max(h, 600);
+        req_params['width'] = parseInt(req_params['width'] / 16) * 16;
+        req_params['height'] = parseInt(req_params['height'] / 16) * 16;
 
-        params['reqid'] = window.reqid;
-
-        function send_request() {
-            if (waiting_for_container) {
-                return;
-            }
-
-            waiting_for_container = true;
-
-            var init_url = api_prefix + "/init_browser?" + $.param(params);
-
-            $.getJSON(init_url, handle_browser_response)
-            .fail(function() {
-                fail_count++;
-
-                if (fail_count <= 3) {
-                    msgdiv().text("Retrying browser init...");
-                    setTimeout(send_request, 5000);
-                } else {
-                    msgdiv().text("Failed to init browser... Please try again later");
-                }
-                msgdiv().show();
-            }).complete(function() {
-                waiting_for_container = false;
-            });
-        }
+        req_params['reqid'] = window.reqid;
 
         send_request();
+    }
+
+    function send_request() {
+        if (waiting_for_container) {
+            return;
+        }
+
+        waiting_for_container = true;
+
+        var init_url = api_prefix + "/init_browser?" + $.param(req_params);
+
+        $.getJSON(init_url, handle_browser_response)
+        .fail(function() {
+            fail_count++;
+
+            if (fail_count <= 3) {
+                msgdiv().text("Retrying browser init...");
+                setTimeout(send_request, 5000);
+            } else {
+                msgdiv().text("Failed to init browser... Please try again later");
+            }
+            msgdiv().show();
+        }).complete(function() {
+            waiting_for_container = false;
+        });
     }
 
     function handle_browser_response(data) {

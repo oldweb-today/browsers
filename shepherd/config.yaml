@@ -1,19 +1,36 @@
-# WR Browser Engine Config
 browser_config:
+
+    # Max simultaneous containers that can be used
+    max_containers: 10
+
+    # max duration of the container
+    container_expire_secs: 86400000
+
+    # duration to keep `reqid` around
+    # from time of request to initialization
+    init_req_expire_secs: 300
+
+    # time to store entries in the queue
+    queue_expire_secs: 60
+
+    # frequency of checking and removing expired containers
+    remove_expired_secs: 30
+
+
+    # THROTTLING
+    # ==========
+    # avg above which to start throttling
+    throttle_max_avg: 1.0
+
+    # number of samples
+    throttle_samples: 10
+    # how long to keep throttle samples around
+    throttle_expire_secs: 30
+
+    # ==============
     api_version: '1.24'
     vnc_port: 6080
     cmd_port: 6082
-
-    max_containers: 100
-
-    throttle_max_avg: 0.60
-    throttle_samples: 10
-    throttle_expire_secs: 60
-
-    container_expire_secs: 600
-    req_expire_secs: 30
-    queue_expire_secs: 30
-    remove_expired_secs: 30
 
     browser_image_prefix: webrecorder/browser-
     label_name: wr.shepherd_name
@@ -21,4 +38,5 @@ browser_config:
     label_prefix: wr.
 
     default_browser: chrome
+
 
