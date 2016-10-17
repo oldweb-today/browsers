@@ -18,12 +18,23 @@ class DockerController(object):
         config = os.environ.get('BROWSER_CONFIG', './config.yaml')
         with open(config) as fh:
             config = yaml.load(fh)
-        return config['browser_config']
+
+        config = config['browser_config']
+        for n, v in config.items():
+            new_v = os.environ.get(n)
+            if not new_v:
+                new_v = os.environ.get(n.upper())
+
+            if new_v:
+                print('Setting Env Val: {0}={1}'.format(n, new_v))
+                config[n] = new_v
+
+        return config
 
     def __init__(self):
         config = self._load_config()
 
-        self.name = os.environ.get('CLUSTER_NAME', '')
+        self.name = config['cluster_name']
         self.label_name = config['label_name']
 
         self.init_req_expire_secs = config['init_req_expire_secs']
@@ -45,8 +56,8 @@ class DockerController(object):
         self.label_browser = config['label_browser']
         self.label_prefix = config['label_prefix']
 
-        self.network_name = os.environ.get('NETWORK_NAME', 'bridge')
-        self.volume_source = os.environ.get('BROWSER_VOLUMES')
+        self.network_name = config['network_name']
+        self.volume_source = config['browser_volumes']
 
         self.default_browser = config['default_browser']
 
@@ -77,7 +88,9 @@ class DockerController(object):
         self.redis.setnx('next_client', '1')
         self.redis.setnx('max_containers', self.max_containers)
         self.redis.setnx('num_containers', '0')
-        self.redis.setnx('cpu_auto_adjust', 5.5)
+
+        # TODO: support this
+        #self.redis.set('cpu_auto_adjust', config['cpu_auto_adjust'])
 
         # if num_containers is invalid, reset to 0
         try:
@@ -85,16 +98,12 @@ class DockerController(object):
         except:
             self.redis.set('num_containers', 0)
 
-        throttle_samples = config['throttle_samples']
-        self.redis.setnx('throttle_samples', throttle_samples)
+        self.redis.set('throttle_samples', config['throttle_samples'])
 
-        throttle_max_avg = config['throttle_max_avg']
-        self.redis.setnx('throttle_max_avg', throttle_max_avg)
+        self.redis.set('throttle_max_avg', config['throttle_max_avg'])
 
-        self.redis.setnx('container_expire_secs',
-                         config['container_expire_secs'])
-
-        self.duration = int(self.redis.get('container_expire_secs'))
+        self.duration = int(config['container_expire_secs'])
+        self.redis.set('container_expire_secs', self.duration)
 
     def load_avail_browsers(self, params=None):
         filters = {"dangling": False}
@@ -261,6 +270,7 @@ class DockerController(object):
 
             return {'vnc_host': vnc_host,
                     'cmd_host': cmd_host,
+                    'id': short_id,
                     'ip': ip,
                    }
 
@@ -365,8 +375,8 @@ class DockerController(object):
                 print('STALE ID: ' + short_id)
                 self.remove_container(short_id)
 
-    def check_nodes(self):
-        print('Check Nodes')
+    def auto_adjust_max(self):
+        print('Auto-Adjust Max Loop')
         try:
             scale = self.redis.get('cpu_auto_adjust')
             if not scale:
@@ -484,6 +494,7 @@ class DockerController(object):
 
         # already started, attempt to reconnect
         if 'queue' in container_data:
+            container_data['ttl'] = self.redis.ttl('ct:' + container_data['id'])
             return container_data
 
         queue_pos = self.am_i_next(reqid)
@@ -521,6 +532,7 @@ class DockerController(object):
             pi.hmset(req_key, info)
             pi.expire(req_key, self.duration)
 
+        info['ttl'] = self.duration
         return info
 
     def get_random_browser(self):

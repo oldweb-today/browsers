@@ -1,4 +1,15 @@
+# Default properties
+# All properties can be overriden by equivalent env variables
+# env vars can match case or be upper-case, eg.
+# cluster_name and CLUSTER_NAME will be checked
+
 browser_config:
+    # cluster name
+    cluster_name: 'browsers'
+
+    # network to add browser containers to
+    # default bridge network
+    network_name: 'bridge'
 
     # Max simultaneous containers that can be used
     max_containers: 10
@@ -27,12 +38,17 @@ browser_config:
     # how long to keep throttle samples around
     throttle_expire_secs: 30
 
+    #scale max_containers automatically based on avail cpus
+    #cpu_auto_adjust: 5.5
+
     # ==============
     api_version: '1.24'
     vnc_port: 6080
     cmd_port: 6082
 
     browser_image_prefix: webrecorder/browser-
+    browser_volumes: ''
+
     label_name: wr.shepherd_name
     label_browser: wr.name
     label_prefix: wr.

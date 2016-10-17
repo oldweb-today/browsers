@@ -22,6 +22,7 @@ var CBrowser = function(target_div, init_params) {
     var on_connect = init_params.on_connect;
     var static_prefix = init_params.static_prefix;
     var proxy_ws = init_params.proxy_ws;
+    var on_countdown = init_params.on_countdown;
 
     var req_params = {};
 
@@ -43,7 +44,10 @@ var CBrowser = function(target_div, init_params) {
         }
 
         // Countdown updater
-        //cid = setInterval(update_countdown, 1000);
+        if (on_countdown) {
+            setInterval(update_countdown, 1000);
+        }
+
         init_html(target_div);
 
         init_container();
@@ -120,6 +124,8 @@ var CBrowser = function(target_div, init_params) {
         if (data.cmd_host && data.vnc_host) {
             cmd_host = data.cmd_host;
             vnc_host = data.vnc_host;
+
+            end_time = parseInt(Date.now() / 1000) + data.ttl;
 
             if (on_connect) {
                 on_connect(data);
@@ -298,7 +304,7 @@ var CBrowser = function(target_div, init_params) {
         var secdiff = end_time - curr;
 
         if (secdiff < 0) {
-            window.location.href = window.location.origin + "/";
+            on_countdown(0, "00:00");
             return;
         }
 
@@ -311,7 +317,7 @@ var CBrowser = function(target_div, init_params) {
             min = "0" + min;
         }
 
-        $("#expire").text(min + ":" + sec);
+        on_countdown(secdiff, min + ":" + sec);
     }
 
     start();

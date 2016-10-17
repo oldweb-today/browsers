@@ -9,7 +9,11 @@
 window.reqid = "{{ container_data.reqid }}";
 
 $(function() {
-  var cb = new CBrowser("#browser");
+    function on_countdown(seconds, countdown_text) {
+        $("#countdown").text(countdown_text);
+    }
+
+    var cb = new CBrowser("#browser", {"on_countdown": on_countdown});
 });
 
 </script>
@@ -17,6 +21,7 @@ $(function() {
 </head>
 
 <body>
+<div id="countdown"></div>
 <div id="browser"></div>
 </body>
 
