@@ -23,6 +23,7 @@ var CBrowser = function(target_div, init_params) {
     var static_prefix = init_params.static_prefix;
     var proxy_ws = init_params.proxy_ws;
     var on_countdown = init_params.on_countdown;
+    var inactiveSecs = init_params.inactiveSecs;
 
     var req_params = {};
 
@@ -271,9 +272,12 @@ var CBrowser = function(target_div, init_params) {
             if (connected) {
                 connected = false;
                 canvas().hide();
+                msgdiv().html("Reconnecting...");
                 msgdiv().show();
 
-                init_container();
+                if (!document.hidden) {
+                    init_container();
+                }
             }
         } else if (state == "normal") {
             canvas().show();
@@ -318,6 +322,24 @@ var CBrowser = function(target_div, init_params) {
         }
 
         on_countdown(secdiff, min + ":" + sec);
+    }
+
+    if (inactiveSecs) {
+        var did;
+
+        document.addEventListener("visibilitychange", function() {
+            if (document.hidden) {
+                did = setTimeout(function() {
+                    rfb.disconnect();
+                },
+                inactiveSecs * 1000);
+            } else {
+                clearTimeout(did);
+                if (!connected) {
+                    init_container();
+                }
+            }
+        });
     }
 
     start();

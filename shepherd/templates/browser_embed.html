@@ -13,7 +13,7 @@ $(function() {
         $("#countdown").text(countdown_text);
     }
 
-    var cb = new CBrowser("#browser", {"on_countdown": on_countdown});
+    var cb = new CBrowser("#browser", {"on_countdown": on_countdown, "inactiveSecs": 10});
 });
 
 </script>
