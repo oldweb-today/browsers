@@ -93,10 +93,10 @@ var CBrowser = function(reqid, target_div, init_params) {
 
         req_params['reqid'] = reqid;
 
-        send_request();
+        init_browser();
     }
 
-    function send_request() {
+    function init_browser() {
         if (waiting_for_container) {
             return;
         }
@@ -107,11 +107,18 @@ var CBrowser = function(reqid, target_div, init_params) {
 
         $.getJSON(init_url)
         .done(handle_browser_response)
-        .fail(function() {
+        .fail(function(jqxhr) {
+            if (!jqxhr || jqxhr.status != 404) {
+                msgdiv().text("Reconnecting to Remote Browser...");
+                msgdiv().show();
+                setTimeout(init_browser, 1000);
+                return;
+            }
+
             if (init_params.on_event) {
                 init_params.on_event("expire");
             } else {
-                msgdiv().text("Remote Browser Expired... Please Try Again...");
+                msgdiv().text("Remote Browser Expired... Please try again...");
                 msgdiv().show();
             }
         }).always(function() {
@@ -143,7 +150,7 @@ var CBrowser = function(reqid, target_div, init_params) {
             }
             msgdiv().html(msg);
 
-            window.setTimeout(send_request, 3000);
+            window.setTimeout(init_browser, 3000);
         }
     }
 
@@ -157,7 +164,7 @@ var CBrowser = function(reqid, target_div, init_params) {
 
         if (fail_count <= num_vnc_retries) {
             msgdiv().text("Retrying to connect to remote browser...");
-            setTimeout(send_request, 500);
+            setTimeout(init_browser, 500);
         } else {
             if (init_params.on_event) {
                 init_params.on_event("fail");
