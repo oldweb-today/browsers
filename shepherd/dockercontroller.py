@@ -141,7 +141,7 @@ class DockerController(object):
         tags = reversed(sorted(tags))
         for tag in tags:
             if tag.endswith(':latest'):
-                continue
+                tag = tag.replace(':latest', '')
 
             if not tag.startswith(self.browser_image_prefix):
                 continue
