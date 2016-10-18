@@ -1,4 +1,4 @@
-var CBrowser = function(target_div, init_params) {
+var CBrowser = function(reqid, target_div, init_params) {
     var cmd_host = undefined;
     var vnc_host = undefined;
 
@@ -18,23 +18,20 @@ var CBrowser = function(target_div, init_params) {
 
     init_params = init_params || {};
 
-    var api_prefix = init_params.api_prefix || "";
-    var on_connect = init_params.on_connect;
-    var static_prefix = init_params.static_prefix;
-    var proxy_ws = init_params.proxy_ws;
-    var on_countdown = init_params.on_countdown;
-    var inactiveSecs = init_params.inactiveSecs;
+    init_params.api_prefix = init_params.api_prefix || "";
+
+    var num_vnc_retries = init_params.num_vnc_retries || 3;
 
     var req_params = {};
 
 
     function start() {
         if (!window.INCLUDE_URI) {
-            if (!static_prefix) {
-                static_prefix = "/static/";
+            if (!init_params.static_prefix) {
+                init_params.static_prefix = "/static/";
             }
 
-            window.INCLUDE_URI = static_prefix + "novnc/";
+            window.INCLUDE_URI = init_params.static_prefix + "novnc/";
 
             $.getScript(window.INCLUDE_URI + "util.js", function() {
                 // Load supporting scripts
@@ -45,13 +42,13 @@ var CBrowser = function(target_div, init_params) {
         }
 
         // Countdown updater
-        if (on_countdown) {
+        if (init_params.on_countdown) {
             setInterval(update_countdown, 1000);
         }
 
         init_html(target_div);
 
-        init_container();
+        init_container("Initializing Remote Browser...");
     }
 
     function canvas() {
@@ -67,7 +64,7 @@ var CBrowser = function(target_div, init_params) {
     }
 
     function init_html() {
-        $(target_div).append($("<div>", {"id": "browserMsg", "class": "loading"}).text("Initializing Browser..."));
+        $(target_div).append($("<div>", {"id": "browserMsg", "class": "loading"}).text(""));
         $(target_div).append($("<div>", {"id": "noVNC_screen"}).append("<canvas>"));
 
         canvas().hide();
@@ -78,7 +75,12 @@ var CBrowser = function(target_div, init_params) {
         screen().mouseenter(grab_focus);
     }
 
-    function init_container() {
+    function init_container(msg) {
+        if (msg) {
+            msgdiv().html(msg);
+            msgdiv().show();
+        }
+
         // calculate dimensions
         var hh = $('header').height();
         var w = window.innerWidth * 0.96;
@@ -89,7 +91,7 @@ var CBrowser = function(target_div, init_params) {
         req_params['width'] = parseInt(req_params['width'] / 16) * 16;
         req_params['height'] = parseInt(req_params['height'] / 16) * 16;
 
-        req_params['reqid'] = window.reqid;
+        req_params['reqid'] = reqid;
 
         send_request();
     }
@@ -101,20 +103,18 @@ var CBrowser = function(target_div, init_params) {
 
         waiting_for_container = true;
 
-        var init_url = api_prefix + "/init_browser?" + $.param(req_params);
+        var init_url = init_params.api_prefix + "/init_browser?" + $.param(req_params);
 
-        $.getJSON(init_url, handle_browser_response)
+        $.getJSON(init_url)
+        .done(handle_browser_response)
         .fail(function() {
-            fail_count++;
-
-            if (fail_count <= 3) {
-                msgdiv().text("Retrying browser init...");
-                setTimeout(send_request, 5000);
+            if (init_params.on_event) {
+                init_params.on_event("expire");
             } else {
-                msgdiv().text("Failed to init browser... Please try again later");
+                msgdiv().text("Remote Browser Expired... Please Try Again...");
+                msgdiv().show();
             }
-            msgdiv().show();
-        }).complete(function() {
+        }).always(function() {
             waiting_for_container = false;
         });
     }
@@ -128,8 +128,8 @@ var CBrowser = function(target_div, init_params) {
 
             end_time = parseInt(Date.now() / 1000) + data.ttl;
 
-            if (on_connect) {
-                on_connect(data);
+            if (init_params.on_event) {
+                init_params.on_event("init", data);
             }
 
             window.setTimeout(try_init_vnc, 1000);
@@ -148,9 +148,22 @@ var CBrowser = function(target_div, init_params) {
     }
 
     function try_init_vnc() {
-        var res = do_vnc();
-        if (!res) {
-            window.setTimeout(try_init_vnc, 1000);
+        if (do_vnc()) {
+            // success!
+            return;
+        }
+
+        fail_count++;
+
+        if (fail_count <= num_vnc_retries) {
+            msgdiv().text("Retrying to connect to remote browser...");
+            setTimeout(send_request, 500);
+        } else {
+            if (init_params.on_event) {
+                init_params.on_event("fail");
+            } else {
+                msgdiv().text("Failed to connect to remote browser... Please try again later");
+            }
         }
     }
 
@@ -242,8 +255,8 @@ var CBrowser = function(target_div, init_params) {
 
         // Proxy WS via the origin host, instead of making direct conn
         // 'proxy_ws' specifies the proxy path, port is appended
-        if (proxy_ws) {
-            path = proxy_ws + port;
+        if (init_params.proxy_ws) {
+            path = init_params.proxy_ws + port;
             host = window.location.hostname;
 
             port = window.location.port;
@@ -264,19 +277,24 @@ var CBrowser = function(target_div, init_params) {
 
     function updateState(rfb, state, oldstate, msg) {
         if (state == "failed" || state == "fatal") {
-            // if not connected yet, attempt to connect until succeed
+            // if not connected yet, attempt to connect
             if (!connected) {
-                window.setTimeout(do_vnc, 1000);
+                window.setTimeout(try_init_vnc, 1000);
             }
         } else if (state == "disconnected") {
             if (connected) {
                 connected = false;
-                canvas().hide();
-                msgdiv().html("Reconnecting...");
-                msgdiv().show();
 
-                if (!document.hidden) {
-                    init_container();
+                canvas().hide();
+
+                var reinit = !document.hidden;
+
+                if (init_params.on_event) {
+                    init_params.on_event("disconnect");
+                }
+
+                if (reinit) {
+                    init_container("Reconnecting to Remote Browser...");
                 }
             }
         } else if (state == "normal") {
@@ -285,6 +303,10 @@ var CBrowser = function(target_div, init_params) {
 
             connected = true;
             fail_count = 0;
+
+            if (init_params.on_event) {
+                init_params.on_event("connect");
+            }
         }
     }
 
@@ -308,7 +330,7 @@ var CBrowser = function(target_div, init_params) {
         var secdiff = end_time - curr;
 
         if (secdiff < 0) {
-            on_countdown(0, "00:00");
+            init_params.on_countdown(0, "00:00");
             return;
         }
 
@@ -321,10 +343,10 @@ var CBrowser = function(target_div, init_params) {
             min = "0" + min;
         }
 
-        on_countdown(secdiff, min + ":" + sec);
+        init_params.on_countdown(secdiff, min + ":" + sec);
     }
 
-    if (inactiveSecs) {
+    if (init_params.inactiveSecs) {
         var did;
 
         document.addEventListener("visibilitychange", function() {
@@ -332,11 +354,15 @@ var CBrowser = function(target_div, init_params) {
                 did = setTimeout(function() {
                     rfb.disconnect();
                 },
-                inactiveSecs * 1000);
+                init_params.inactiveSecs * 1000);
             } else {
                 clearTimeout(did);
                 if (!connected) {
-                    init_container();
+                    if (init_params.on_event) {
+                        init_params.on_event("reconnect");
+                    }
+ 
+                    init_container("Reconnecting to Remote Browser...");
                 }
             }
         });

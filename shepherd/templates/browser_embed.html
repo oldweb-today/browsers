@@ -13,7 +13,15 @@ $(function() {
         $("#countdown").text(countdown_text);
     }
 
-    var cb = new CBrowser("#browser", {"on_countdown": on_countdown, "inactiveSecs": 10});
+    function on_event(type, data) {
+        if (type == "fail" || type == "expire") {
+            window.location.reload();
+        }
+    }
+
+    var cb = new CBrowser(reqid, "#browser", {"on_countdown": on_countdown,
+                                              "on_event": on_event,
+                                              "inactiveSecs": 10});
 });
 
 </script>
