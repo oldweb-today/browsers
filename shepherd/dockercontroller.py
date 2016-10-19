@@ -411,6 +411,9 @@ class DockerController(object):
     def _make_reqid(self):
         return base64.b32encode(os.urandom(15)).decode('utf-8')
 
+    def _make_vnc_pass(self):
+        return base64.b64encode(os.urandom(21)).decode('utf-8')
+
     def register_request(self, container_data):
         reqid = self._make_reqid()
 
@@ -520,6 +523,9 @@ class DockerController(object):
         env['TS'] = ts
         env['BROWSER'] = browser
 
+        vnc_pass = self._make_vnc_pass()
+        env['VNC_PASS'] = vnc_pass
+
         self._copy_env(env, 'PROXY_HOST')
         self._copy_env(env, 'PROXY_PORT')
         self._copy_env(env, 'SCREEN_WIDTH', width)
@@ -528,6 +534,7 @@ class DockerController(object):
 
         info = self.timed_new_container(browser, env, host, reqid)
         info['queue'] = 0
+        info['vnc_pass'] = vnc_pass
 
         new_key = 'ip:' + info['ip']
 

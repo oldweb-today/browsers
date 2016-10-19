@@ -11,6 +11,7 @@ var CBrowser = function(reqid, target_div, init_params) {
 
     var rfb;
     var resizeTimeout;
+    var vnc_pass = "secret";
 
     var end_time = undefined;
     var cid = undefined;
@@ -135,6 +136,8 @@ var CBrowser = function(reqid, target_div, init_params) {
 
             end_time = parseInt(Date.now() / 1000) + data.ttl;
 
+            vnc_pass = data.vnc_pass;
+
             if (init_params.on_event) {
                 init_params.on_event("init", data);
             }
@@ -257,7 +260,7 @@ var CBrowser = function(reqid, target_div, init_params) {
         var hostport = vnc_host.split(":");
         var host = hostport[0];
         var port = hostport[1];
-        var password = "secret";
+        var password = vnc_pass;
         var path = "websockify";
 
         // Proxy WS via the origin host, instead of making direct conn
