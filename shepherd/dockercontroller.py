@@ -63,7 +63,13 @@ class DockerController(object):
 
         self._init_cli()
 
-        self._init_redis(config)
+        while True:
+            try:
+                self._init_redis(config)
+                break
+            except BusyLoadingError:
+                print('Waiting for Redis to Load...')
+                time.sleep(5)
 
     def _init_cli(self):
         if os.path.exists('/var/run/docker.sock'):
@@ -77,13 +83,7 @@ class DockerController(object):
     def _init_redis(self, config):
         redis_url = os.environ['REDIS_BROWSER_URL']
 
-        while True:
-            try:
-                self.redis = redis.StrictRedis.from_url(redis_url, decode_responses=True)
-                break
-            except BusyLoadingError:
-                print('Waiting for Redis to Load...')
-                time.sleep(5)
+        self.redis = redis.StrictRedis.from_url(redis_url, decode_responses=True)
 
         self.redis.setnx('next_client', '1')
         self.redis.setnx('max_containers', self.max_containers)
@@ -138,17 +138,25 @@ class DockerController(object):
         return browsers
 
     def _get_primary_id(self, tags):
-        tags = reversed(sorted(tags))
+        primary_tag = None
         for tag in tags:
+            if not tag:
+                continue
+
             if tag.endswith(':latest'):
                 tag = tag.replace(':latest', '')
 
             if not tag.startswith(self.browser_image_prefix):
                 continue
 
-            return tag[len(self.browser_image_prefix):]
+            # pick the longest tag as primary tag
+            if not primary_tag or len(tag) > len(primary_tag):
+                primary_tag = tag
 
-        return None
+        if primary_tag:
+            return primary_tag[len(self.browser_image_prefix):]
+        else:
+            return None
 
     def load_browser(self, name, include_icon=False):
         tag = self.browser_image_prefix + name
