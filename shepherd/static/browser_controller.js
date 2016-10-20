@@ -34,11 +34,14 @@ var CBrowser = function(reqid, target_div, init_params) {
 
             window.INCLUDE_URI = init_params.static_prefix + "novnc/";
 
-            $.getScript(window.INCLUDE_URI + "util.js", function() {
-                // Load supporting scripts
-                Util.load_scripts(["webutil.js", "base64.js", "websock.js", "des.js",
-                                   "keysymdef.js", "keyboard.js", "input.js", "display.js",
-                                   "inflator.js", "rfb.js", "keysym.js"]);
+            $.getScript(window.INCLUDE_URI + "core/util.js", function() {
+                $.getScript(window.INCLUDE_URI + "app/webutil.js", function() {
+
+                    WebUtil.load_scripts(
+                        {'core': ["base64.js", "websock.js", "des.js", "input/keysymdef.js",
+                                  "input/xtscancodes.js", "input/util.js", "input/devices.js",
+                                  "display.js", "inflator.js", "rfb.js", "input/keysym.js"]});
+                });
             });
         }
 
@@ -307,7 +310,7 @@ var CBrowser = function(reqid, target_div, init_params) {
                     init_container("Reconnecting to Remote Browser...");
                 }
             }
-        } else if (state == "normal") {
+        } else if (state == "connected") {
             canvas().show();
             msgdiv().hide();
 
@@ -362,7 +365,9 @@ var CBrowser = function(reqid, target_div, init_params) {
         document.addEventListener("visibilitychange", function() {
             if (document.hidden) {
                 did = setTimeout(function() {
-                    rfb.disconnect();
+                    if (rfb) {
+                        rfb.disconnect();
+                    }
                 },
                 init_params.inactiveSecs * 1000);
             } else {
