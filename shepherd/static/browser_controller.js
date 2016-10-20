@@ -53,6 +53,25 @@ var CBrowser = function(reqid, target_div, init_params) {
         init_html(target_div);
 
         init_container("Initializing Remote Browser...");
+
+        init_clipboard();
+    }
+
+    function init_clipboard() {
+        if (!init_params.clipboard) {
+            return;
+        }
+
+        var lastText = undefined;
+
+        $(init_params.clipboard).on('change keyup paste', function() {
+            var text = $(init_params.clipboard).val();
+            
+            if (connected && rfb && lastText != text) {
+                rfb.clipboardPasteFrom(text);
+                lastText = text;
+            }
+        });
     }
 
     function canvas() {
@@ -238,7 +257,9 @@ var CBrowser = function(reqid, target_div, init_params) {
 
     function onVNCCopyCut(rfb, text)
     {
-        //$("#clipcontent").text(text);
+        if (init_params.clipboard) {
+            $(init_params.clipboard).val(text);
+        }
     }
 
     function do_vnc() {
