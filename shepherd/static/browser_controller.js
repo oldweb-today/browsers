@@ -310,12 +310,7 @@ var CBrowser = function(reqid, target_div, init_params) {
     }
 
     function updateState(rfb, state, oldstate, msg) {
-        if (state == "failed" || state == "fatal") {
-            // if not connected yet, attempt to connect
-            if (!connected) {
-                window.setTimeout(try_init_vnc, 1000);
-            }
-        } else if (state == "disconnected") {
+        if (state == "disconnected") {
             if (connected) {
                 connected = false;
 
@@ -340,6 +335,13 @@ var CBrowser = function(reqid, target_div, init_params) {
 
             if (init_params.on_event) {
                 init_params.on_event("connect");
+            }
+        } else if (state == "connecting" || state == "disconnecting") {
+            // do nothing
+        } else {
+            // if not connected yet, attempt to connect
+            if (!connected) {
+                window.setTimeout(try_init_vnc, 1000);
             }
         }
     }
