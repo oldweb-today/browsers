@@ -336,11 +336,11 @@ var CBrowser = function(reqid, target_div, init_params) {
             if (init_params.on_event) {
                 init_params.on_event("connect");
             }
-        } else if (state == "connecting" || state == "disconnecting") {
+        } else if (state == "connecting") {
             // do nothing
         } else {
             // if not connected yet, attempt to connect
-            if (!connected) {
+            if (!connected && state == "disconnecting") {
                 window.setTimeout(try_init_vnc, 1000);
             }
         }
