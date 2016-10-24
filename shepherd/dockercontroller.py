@@ -58,6 +58,7 @@ class DockerController(object):
 
         self.network_name = config['network_name']
         self.volume_source = config['browser_volumes']
+        self.shm_size = config['shm_size']
 
         self.default_browser = config['default_browser']
 
@@ -301,6 +302,7 @@ class DockerController(object):
                                                 self.cmd_port: None},
                                  volumes_from=volumes_from,
                                  network_mode=self.network_name,
+                                 shm_size=self.shm_size,
                                  cap_add=['ALL'],
                                 )
         return host_config

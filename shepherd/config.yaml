@@ -47,7 +47,9 @@ browser_config:
     cmd_port: 6082
 
     browser_image_prefix: webrecorder/browser-
+
     browser_volumes: ''
+    shm_size: 1g
 
     label_name: wr.shepherd_name
     label_browser: wr.name
