@@ -277,7 +277,7 @@ var CBrowser = function(reqid, target_div, init_params) {
     function FBUComplete(rfb, fbu) {
         UIresize();
 
-        if (window.innerWidth < min_width || window.innerHeight < min_height) {
+        if (req_params['width'] < min_width || req_params['height'] < min_height) {
             clientResize();
         }
 
