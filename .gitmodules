@@ -7,3 +7,6 @@
 [submodule "browsers/browser-chrome"]
 	path = browsers/browser-chrome
 	url = https://github.com/webrecorder/browser-chrome
+[submodule "browsers/browser-chrome-m"]
+	path = browsers/browser-chrome-m
+	url = https://github.com/webrecorder/browser-chrome-m
