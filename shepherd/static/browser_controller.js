@@ -96,6 +96,8 @@ var CBrowser = function(reqid, target_div, init_params) {
         screen().mouseleave(lose_focus);
 
         screen().mouseenter(grab_focus);
+
+        canvas().on('click', grab_focus);
     }
 
     function init_container(msg) {
@@ -108,6 +110,13 @@ var CBrowser = function(reqid, target_div, init_params) {
         var hh = $('header').height();
         var w = window.innerWidth * 0.96;
         var h = window.innerHeight - (25 + hh);
+
+        if (w < h) {
+            // flip mins for vertical layout
+            var t = min_width;
+            min_width = min_height;
+            min_height = t;
+        }
 
         req_params['width'] = Math.max(w, min_width);
         req_params['height'] = Math.max(h, min_height);
@@ -207,6 +216,12 @@ var CBrowser = function(reqid, target_div, init_params) {
 
     function grab_focus() {
         if (!rfb) return;
+
+        if (document.activeElement &&
+            (document.activeElement.tagName == "INPUT" || document.activeElement.tagName == "TEXTAREA")) {
+            return;
+        }
+
         rfb.get_keyboard().set_focused(true);
         rfb.get_mouse().set_focused(true);
     }
@@ -248,8 +263,9 @@ var CBrowser = function(reqid, target_div, init_params) {
     function FBUComplete(rfb, fbu) {
         UIresize();
 
-        if(window.innerWidth < min_width || window.innerHeight < min_height)
+        if (window.innerWidth < min_width || window.innerHeight < min_height) {
             clientResize();
+        }
 
         clientPosition();
         rfb.set_onFBUComplete(function() { });
@@ -310,7 +326,7 @@ var CBrowser = function(reqid, target_div, init_params) {
     }
 
     function updateState(rfb, state, oldstate, msg) {
-        if (state == "disconnected") {
+        if (state == "disconnected" || state == "disconnecting") {
             if (connected) {
                 connected = false;
 
@@ -338,11 +354,6 @@ var CBrowser = function(reqid, target_div, init_params) {
             }
         } else if (state == "connecting") {
             // do nothing
-        } else {
-            // if not connected yet, attempt to connect
-            if (!connected && state == "disconnecting") {
-                window.setTimeout(try_init_vnc, 1000);
-            }
         }
     }
 
@@ -407,6 +418,9 @@ var CBrowser = function(reqid, target_div, init_params) {
     }
 
     start();
+
+    return {"grab_focus": grab_focus,
+            "lose_focus": lose_focus}
 };
 
 
