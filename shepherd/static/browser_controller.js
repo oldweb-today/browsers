@@ -3,6 +3,7 @@ var CBrowser = function(reqid, target_div, init_params) {
     var vnc_host = undefined;
 
     var connected = false;
+    var ever_connected = false;
 
     var fail_count = 0;
 
@@ -15,7 +16,9 @@ var CBrowser = function(reqid, target_div, init_params) {
 
     var end_time = undefined;
     var cid = undefined;
+
     var waiting_for_container = false;
+    var waiting_for_vnc = false;
 
     init_params = init_params || {};
 
@@ -52,7 +55,7 @@ var CBrowser = function(reqid, target_div, init_params) {
 
         init_html(target_div);
 
-        init_container("Initializing Remote Browser...");
+        setup_browser();
 
         init_clipboard();
     }
@@ -100,11 +103,21 @@ var CBrowser = function(reqid, target_div, init_params) {
         canvas().on('click', grab_focus);
     }
 
-    function init_container(msg) {
-        if (msg) {
-            msgdiv().html(msg);
-            msgdiv().show();
+    function setup_browser() {
+        if (waiting_for_vnc || waiting_for_container) {
+            return;
         }
+
+        var msg;
+
+        if (ever_connected) {
+            msg = "Reconnecting to Remote Browser...";
+        } else {
+            msg = "Initializing Remote Browser...";
+        }
+
+        msgdiv().html(msg);
+        msgdiv().show();
 
         // calculate dimensions
         var hh = $('header').height();
@@ -219,6 +232,7 @@ var CBrowser = function(reqid, target_div, init_params) {
 
         if (document.activeElement &&
             (document.activeElement.tagName == "INPUT" || document.activeElement.tagName == "TEXTAREA")) {
+            lose_focus();
             return;
         }
 
@@ -279,6 +293,12 @@ var CBrowser = function(reqid, target_div, init_params) {
     }
 
     function do_vnc() {
+        if (waiting_for_vnc) {
+            return;
+        }
+
+        waiting_for_vnc = true;
+
         try {
             rfb = new RFB({'target':       canvas()[0],
                            'encrypt':      WebUtil.getQueryVar('encrypt',
@@ -292,6 +312,7 @@ var CBrowser = function(reqid, target_div, init_params) {
                            'onClipboard':    onVNCCopyCut,
                            'onFBUComplete':  FBUComplete});
         } catch (exc) {
+            waiting_for_vnc = false;
             //updateState(null, 'fatal', null, 'Unable to create RFB client -- ' + exc);
             console.warn(exc);
             return false; // don't continue trying to connect
@@ -318,34 +339,35 @@ var CBrowser = function(reqid, target_div, init_params) {
         try {
             rfb.connect(host, port, password, path);
         } catch (exc) {
+            waiting_for_vnc = false;
             console.warn(exc);
             return false;
         }
 
+        waiting_for_vnc = false;
         return true;
     }
 
     function updateState(rfb, state, oldstate, msg) {
-        if (state == "disconnected" || state == "disconnecting") {
-            if (connected) {
-                connected = false;
+        if (state == "disconnecting") {
+            connected = false;
 
-                canvas().hide();
+            canvas().hide();
 
-                var reinit = !document.hidden;
+            var reinit = !document.hidden;
 
-                if (init_params.on_event) {
-                    init_params.on_event("disconnect");
-                }
+            if (init_params.on_event) {
+                init_params.on_event("disconnect");
+            }
 
-                if (reinit) {
-                    init_container("Reconnecting to Remote Browser...");
-                }
+            if (reinit) {
+                setup_browser();
             }
         } else if (state == "connected") {
             canvas().show();
             msgdiv().hide();
 
+            ever_connected = true;
             connected = true;
             fail_count = 0;
 
@@ -411,7 +433,7 @@ var CBrowser = function(reqid, target_div, init_params) {
                         init_params.on_event("reconnect");
                     }
  
-                    init_container("Reconnecting to Remote Browser...");
+                    setup_browser();
                 }
             }
         });
