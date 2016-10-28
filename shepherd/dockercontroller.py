@@ -139,6 +139,9 @@ class DockerController(object):
         return browsers
 
     def _get_primary_id(self, tags):
+        if not tags:
+            return None
+
         primary_tag = None
         for tag in tags:
             if not tag:
