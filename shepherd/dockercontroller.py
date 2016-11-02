@@ -535,7 +535,7 @@ class DockerController(object):
         self._copy_env(env, 'PROXY_PORT')
         self._copy_env(env, 'SCREEN_WIDTH', width)
         self._copy_env(env, 'SCREEN_HEIGHT', height)
-        self._copy_env(env, 'IDLE_TIME')
+        self._copy_env(env, 'IDLE_TIMEOUT')
 
         info = self.timed_new_container(browser, env, host, reqid)
         info['queue'] = 0
