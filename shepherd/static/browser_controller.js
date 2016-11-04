@@ -182,6 +182,10 @@ var CBrowser = function(reqid, target_div, init_params) {
 
             vnc_pass = data.vnc_pass;
 
+            if (init_params.audio) {
+                doAudio(data);
+            }
+
             if (init_params.on_event) {
                 init_params.on_event("init", data);
             }
@@ -440,6 +444,98 @@ var CBrowser = function(reqid, target_div, init_params) {
     }
 
     start();
+
+    function doAudio(data) {
+        var audio_ws = undefined;
+
+        var buffQ = [];
+        var allowQ = init_params.audio_q || false;
+        var source = undefined;
+
+        var ws_url;
+
+        var audio_port = data.cmd_host.split(":")[1];
+
+        if (init_params.proxy_ws) {
+            ws_url = init_params.proxy_ws + audio_port;
+        } else {
+            ws_url = (window.location.protocol == "https:" ? "wss:" : "ws:") + data.cmd_host + "/audio_ws";
+        }
+
+        function init_ws() {
+            audio_ws = new WebSocket(ws_url);
+            audio_ws.binaryType = 'arraybuffer';
+            audio_ws.addEventListener("open", ws_open);
+            audio_ws.addEventListener("message", ws_message);
+            audio_ws.addEventListener('error', ws_error);
+        }
+
+        function ws_open(event) {
+            var ms = new MediaSource();
+
+            function openSource() {
+                source = ms.addSourceBuffer('audio/webm; codecs="opus"');
+                source.mode = "sequence";
+                source.onupdateend = update_next;
+                source.onerror = restart;
+            }
+
+            function restart(e) {
+                console.log("resetting");
+                ms.endOfStream();
+                source = undefined;
+                console.log(e);
+
+                setTimeout(openSource, 500);
+            }
+
+            ms.onsourceopen = openSource;
+            ms.onerror = restart;
+
+            var sound = new Audio();
+            sound.src = URL.createObjectURL(ms);
+            sound.autoplay = true;
+            sound.play();
+        }
+
+        function update_next() {
+            if (!buffQ.length || !source) {
+                return;
+            }
+
+            buffer = buffQ.shift();
+            source.appendBuffer(buffer);
+        }
+
+        function ws_message(event) {
+            //var buffer = new Uint8Array(event.data);
+            var buffer = event.data;
+
+            if (!source) {
+                console.log("no source, dropping audio");
+                return;
+            }
+
+            if (source.updating) {
+                if (allowQ) {
+                    buffQ.push(buffer);
+                    console.log("queueing audio");
+                } else {
+                    console.log("dropping audio");
+                }
+            } else {
+                //console.log("adding");
+                source.appendBuffer(buffer);
+            }
+        }
+
+        function ws_error(e) {
+            //console.log(e);
+            setTimeout(init_ws, 500);
+        }
+
+        init_ws();
+    }
 
     return {"grab_focus": grab_focus,
             "lose_focus": lose_focus}
