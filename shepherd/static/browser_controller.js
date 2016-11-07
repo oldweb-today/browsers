@@ -183,7 +183,11 @@ var CBrowser = function(reqid, target_div, init_params) {
             vnc_pass = data.vnc_pass;
 
             if (init_params.audio) {
-                doAudio(data);
+                if (data.audio == "opus") {
+                    doAudio(data);
+                } else if (data.audio == "raw") {
+                    doAudioRaw(data);
+                }
             }
 
             if (init_params.on_event) {
@@ -443,18 +447,153 @@ var CBrowser = function(reqid, target_div, init_params) {
         });
     }
 
-    start();
-
     function doAudio(data) {
+        var mime_type = 'audio/webm; codecs="opus"';
         var audio_ws = undefined;
 
         var buffQ = [];
-        var allowQ = init_params.audio_q || false;
+        var firstBuffer = undefined;
         var source = undefined;
+        var err_count = 0;
+        var initing = false;
 
         var ws_url;
 
         var audio_port = data.cmd_host.split(":")[1];
+
+        if (init_params.proxy_ws) {
+            ws_url = init_params.proxy_ws + audio_port;
+        } else {
+            ws_url = (window.location.protocol == "https:" ? "wss:" : "ws:") + data.cmd_host + "/audio_ws";
+        }
+
+        function createSource() {
+            if (initing) {
+                console.log("already initing");
+                return;
+            }
+
+            initing = true;
+
+            var ms = new MediaSource();
+            ms.addEventListener("sourceopen", openSource);
+            ms.addEventListener("error", restart);
+
+            var sound = new Audio();
+            sound.src = URL.createObjectURL(ms);
+            sound.autoplay = true;
+            sound.load();
+            sound.play();
+        }
+
+        function openSource() {
+            var new_source = undefined;
+
+            try {
+                new_source = this.addSourceBuffer(mime_type);
+            } catch (e) {
+                console.log("Audio Error: " + e);
+                return;
+            }
+
+            new_source.mode = "sequence";
+            new_source.timestampOffset = 0;
+            new_source.addEventListener("error", restart);
+            new_source.addEventListener("updateend", update_next);
+            if (firstBuffer) {
+                try {
+                    new_source.appendBuffer(firstBuffer);
+                } catch (e) {
+                    console.log("Audio Error: " + e);
+                }
+            }
+            source = new_source;
+            initing = false;
+        }
+
+        function restart(e) {
+            source = undefined;
+
+            if (err_count == 0) {
+                setTimeout(createSource, 500);
+            }
+
+            err_count++;
+        }
+
+        function update_next() {
+            if (!buffQ.length || !source) {
+                return;
+            }
+
+            buffer = buffQ.shift();
+
+            if (!firstBuffer) {
+                firstBuffer = buffer;
+            }
+
+            try {
+                source.appendBuffer(buffer);
+                err_count = 0;
+            } catch (e) {
+                console.log(e);
+                restart();
+            }
+        }
+
+        function init_ws() {
+            audio_ws = new WebSocket(ws_url);
+            audio_ws.binaryType = 'arraybuffer';
+            audio_ws.addEventListener("open", ws_open);
+            audio_ws.addEventListener("message", ws_message);
+            audio_ws.addEventListener('error', ws_error);
+        }
+
+        function ws_open(event) {
+            createSource();
+        }
+
+        function ws_message(event) {
+            //var buffer = new Uint8Array(event.data);
+            var buffer = event.data;
+
+            if (!source) {
+                console.log("no source, dropping audio");
+                if (!initing) {
+                    createSource();
+                }
+                return;
+            }
+
+            if (buffQ.length < 5) {
+                buffQ.push(buffer);
+            } else {
+                console.log("dropping audio");
+            }
+
+            if (!source.updating) {
+                update_next();
+            }
+        }
+
+        function ws_error(e) {
+            //console.log(e);
+            setTimeout(init_ws, 500);
+        }
+
+        init_ws();
+    }
+
+    function doAudioRaw(data) {
+        var audio_port = data.cmd_host.split(":")[1];
+        var context = undefined;
+        var source = undefined;
+        var script_proc = undefined;
+
+
+        var circ_buff = new Float32Array(4096 * 8);
+        var circ_buff_write_ptr = 0;
+        var circ_buff_read_ptr = 0;
 
         if (init_params.proxy_ws) {
             ws_url = init_params.proxy_ws + audio_port;
@@ -471,71 +610,77 @@ var CBrowser = function(reqid, target_div, init_params) {
         }
 
         function ws_open(event) {
-            var ms = new MediaSource();
+            var ctx = (window.AudioContext || window.webkitAudioContext);
+            context = new ctx();
 
-            function openSource() {
-                source = ms.addSourceBuffer('audio/webm; codecs="opus"');
-                source.mode = "sequence";
-                source.onupdateend = update_next;
-                source.onerror = restart;
-            }
+            script_proc = context.createScriptProcessor(4096, 1, 1);
+            script_proc.addEventListener("audioprocess", process_audio);
 
-            function restart(e) {
-                console.log("resetting");
-                ms.endOfStream();
-                source = undefined;
-                console.log(e);
-
-                setTimeout(openSource, 500);
-            }
-
-            ms.onsourceopen = openSource;
-            ms.onerror = restart;
-
-            var sound = new Audio();
-            sound.src = URL.createObjectURL(ms);
-            sound.autoplay = true;
-            sound.play();
+            source = context.createBufferSource();
+            source.connect(script_proc);
+            script_proc.connect(context.destination);
+            //source.start(0);
         }
 
-        function update_next() {
-            if (!buffQ.length || !source) {
-                return;
-            }
+        function process_audio(event) {
+            var input = event.inputBuffer;
+            var output = event.outputBuffer;
 
-            buffer = buffQ.shift();
-            source.appendBuffer(buffer);
+            //if (circ_buff_read_ptr >= circ_buff_write_ptr) {
+            //}
+
+            var data = output.getChannelData(0);
+
+            if ((output.length + circ_buff_read_ptr) <= circ_buff.length) {
+                data.set(circ_buff.slice(circ_buff_read_ptr, circ_buff_read_ptr + output.length));
+            } else {
+                var rem_len = (circ_buff_read_ptr + output.length) - output.length;
+                data.set(circ_buff.slice(circ_buff_read_ptr, circ_buff.length));
+                data.set(circ_buff.slice(0, rem_len), circ_buff.length - circ_buff_read_ptr);
+            }
+            circ_buff_read_ptr = (circ_buff_read_ptr + output.length) % circ_buff.length;
         }
 
         function ws_message(event) {
-            //var buffer = new Uint8Array(event.data);
-            var buffer = event.data;
-
             if (!source) {
-                console.log("no source, dropping audio");
-                return;
+                return "dropping, no source";
             }
 
-            if (source.updating) {
-                if (allowQ) {
-                    buffQ.push(buffer);
-                    console.log("queueing audio");
-                } else {
-                    console.log("dropping audio");
-                }
+            var float_array = fillFloatArray(event.data);
+
+            if ((float_array.length + circ_buff_write_ptr) <= circ_buff.length) {
+                circ_buff.set(float_array, circ_buff_write_ptr);
             } else {
-                //console.log("adding");
-                source.appendBuffer(buffer);
+                var split = circ_buff.length - circ_buff_write_ptr;
+                circ_buff.set(float_array.slice(0, split), circ_buff_write_ptr);
+                circ_buff.set(float_array.slice(split), 0);
             }
+            circ_buff_write_ptr = (circ_buff_write_ptr + float_array.length) % circ_buff.length;
         }
 
-        function ws_error(e) {
-            //console.log(e);
+        function fillFloatArray(array) {
+            array = new Uint8Array(array);
+            var float_array = new Float32Array(array.length);
+
+            for (var i = 0; i < float_array.length; i++) {
+                float_array[i] = array[i] / 255.0;
+            }
+
+            return float_array;
+
+            //var buffer = context.createBuffer(1, float_array.length, 22050);
+            //buffer.getChannelData(0).set(float_array);
+            //source.buffer = buffer; 
+        }
+
+        function ws_error(event) {
             setTimeout(init_ws, 500);
         }
 
         init_ws();
     }
+
+    start();
 
     return {"grab_focus": grab_focus,
             "lose_focus": lose_focus}

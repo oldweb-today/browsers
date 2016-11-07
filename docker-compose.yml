@@ -12,6 +12,7 @@ services:
             - CLUSTER_NAME=browser_shepherd
             - NETWORK_NAME=browsers_default
             - IDLE_TIMEOUT=60
+            - AUDIO_TYPE=opus
 
         depends_on:
             - redis
