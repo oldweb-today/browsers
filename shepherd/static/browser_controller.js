@@ -447,7 +447,23 @@ var CBrowser = function(reqid, target_div, init_params) {
         });
     }
 
-    function doAudio(data) {
+
+    function get_ws_url(browser_info) {
+        var ws_url;
+
+        ws_url = (window.location.protocol == "https:" ? "wss:" : "ws:");
+
+        if (init_params.proxy_ws) {
+            var audio_port = browser_info.cmd_host.split(":")[1];
+            ws_url += window.location.host + "/" + init_params.proxy_ws + audio_port;
+        } else {
+            ws_url += browser_info.cmd_host + "/audio_ws";
+        }
+
+        return ws_url;
+    }
+
+    function doAudio(browser_info) {
         var mime_type = 'audio/webm; codecs="opus"';
         var audio_ws = undefined;
 
@@ -457,15 +473,7 @@ var CBrowser = function(reqid, target_div, init_params) {
         var err_count = 0;
         var initing = false;
 
-        var ws_url;
-
-        var audio_port = data.cmd_host.split(":")[1];
-
-        if (init_params.proxy_ws) {
-            ws_url = init_params.proxy_ws + audio_port;
-        } else {
-            ws_url = (window.location.protocol == "https:" ? "wss:" : "ws:") + data.cmd_host + "/audio_ws";
-        }
+        var ws_url = get_ws_url(browser_info);
 
         function createSource() {
             if (initing) {
@@ -595,11 +603,7 @@ var CBrowser = function(reqid, target_div, init_params) {
         var circ_buff_write_ptr = 0;
         var circ_buff_read_ptr = 0;
 
-        if (init_params.proxy_ws) {
-            ws_url = init_params.proxy_ws + audio_port;
-        } else {
-            ws_url = (window.location.protocol == "https:" ? "wss:" : "ws:") + data.cmd_host + "/audio_ws";
-        }
+        var ws_url = get_ws_url(browser_info);
 
         function init_ws() {
             audio_ws = new WebSocket(ws_url);
