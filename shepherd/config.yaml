@@ -43,8 +43,11 @@ browser_config:
 
     # ==============
     api_version: '1.24'
-    vnc_port: 6080
-    cmd_port: 6082
+
+    # container ports to map
+    ports:
+        vnc: 6080
+        cmd: 6082
 
     browser_image_prefix: webrecorder/browser-
 

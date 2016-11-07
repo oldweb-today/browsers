@@ -44,8 +44,8 @@ class DockerController(object):
 
         self.api_version = config['api_version']
 
-        self.vnc_port = config['vnc_port']
-        self.cmd_port = config['cmd_port']
+        self.ports = config['ports']
+        self.port_bindings=dict((port, None) for port in self.ports.values())
 
         self.max_containers = config['max_containers']
 
@@ -256,7 +256,7 @@ class DockerController(object):
             host_config = self.create_host_config()
 
             container = self.cli.create_container(image=image,
-                                                  ports=[self.vnc_port, self.cmd_port],
+                                                  ports=list(self.ports.values()),
                                                   environment=env,
                                                   host_config=host_config,
                                                   labels={self.label_name: self.name},
@@ -273,18 +273,15 @@ class DockerController(object):
 
             self.redis.hset('all_containers', short_id, ip)
 
-            vnc_host = self._get_host_port(info, self.vnc_port, default_host)
-            cmd_host = self._get_host_port(info, self.cmd_port, default_host)
+            result = {}
 
-            print(ip)
-            print(vnc_host)
-            print(cmd_host)
+            for port_name in self.ports:
+                result[port_name + '_host'] = self._get_host_port(info, self.ports[port_name], default_host)
 
-            return {'vnc_host': vnc_host,
-                    'cmd_host': cmd_host,
-                    'id': short_id,
-                    'ip': ip,
-                   }
+            result['id'] = short_id
+            result['ip'] = ip
+            result['audio'] = os.environ.get('AUDIO_TYPE', '')
+            return result
 
         except Exception as e:
             traceback.print_exc()
@@ -301,8 +298,7 @@ class DockerController(object):
             volumes_from = None
 
         host_config = self.cli.create_host_config(
-                                 port_bindings={self.vnc_port: None,
-                                                self.cmd_port: None},
+                                 port_bindings=self.port_bindings,
                                  volumes_from=volumes_from,
                                  network_mode=self.network_name,
                                  shm_size=self.shm_size,
@@ -536,6 +532,7 @@ class DockerController(object):
         self._copy_env(env, 'SCREEN_WIDTH', width)
         self._copy_env(env, 'SCREEN_HEIGHT', height)
         self._copy_env(env, 'IDLE_TIMEOUT')
+        self._copy_env(env, 'AUDIO_TYPE')
 
         info = self.timed_new_container(browser, env, host, reqid)
         info['queue'] = 0
