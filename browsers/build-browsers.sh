@@ -1,18 +1,22 @@
 #!/bin/bash
-DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
+
+# Build All Containers
+CURR_DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 
 set -e
 
-for dir in $DIR/*/
+BROWSER_DIRS=$(find $CURR_DIR -type f -name Dockerfile)
+
+echo "Building $BROWSER_DIRS"
+
+for dir in $BROWSER_DIRS
 do
-    dir=${dir%*/}
-    name=`basename $dir`
+    dir=`dirname $dir`
     if [ -f "$dir/skip" ]; then
        continue
     fi
-
     cd $dir
-    $DIR/build-me.sh
+    $CURR_DIR/build-me.sh
 done
 
 

@@ -10,3 +10,6 @@
 [submodule "browsers/browser-chrome-m"]
 	path = browsers/browser-chrome-m
 	url = https://github.com/webrecorder/browser-chrome-m
+[submodule "browsers/wine-browsers"]
+	path = browsers/wine-browsers
+	url = https://github.com/webrecorder/wine-browsers
