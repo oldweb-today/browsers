@@ -121,8 +121,14 @@ var CBrowser = function(reqid, target_div, init_params) {
 
         // calculate dimensions
         var hh = $('header').height();
-        var w = window.innerWidth * 0.96;
-        var h = window.innerHeight - (25 + hh);
+        var w, h;
+        if (!init_params.fill_window) {
+            w = window.innerWidth * 0.96;
+            h = window.innerHeight - (25 + hh);
+        } else {
+            w = window.innerWidth;
+            h = window.innerHeight;
+        }
 
         if (w < h) {
             // flip mins for vertical layout
@@ -248,33 +254,30 @@ var CBrowser = function(reqid, target_div, init_params) {
         rfb.get_mouse().set_focused(true);
     }
 
-    function UIresize() {
-        if (WebUtil.getQueryVar('resize', false)) {
-            var innerW = window.innerWidth;
-            var innerH = window.innerHeight;
-            //var controlbarH = $D('noVNC_status_bar').offsetHeight;
-            var controlH = 0;
-            var padding = 5;
-            if (innerW !== undefined && innerH !== undefined)
-                rfb.setDesktopSize(innerW, innerH - controlbarH - padding);
-        }
-    }
-
     function clientPosition() {
         var hh = $('header').height();
         var c = canvas();
         var ch = c.height();
         var cw = c.width();
-        c.css({
-            marginLeft: (window.innerWidth - cw)/2,
-            marginTop: (window.innerHeight - (hh + ch + 25))/2
-        });
+        if (!init_params.fill_window) {
+            c.css({
+                marginLeft: (window.innerWidth - cw)/2,
+                marginTop: (window.innerHeight - (hh + ch + 25))/2
+            });
+        }
     }
 
     function clientResize() {
         var hh = $('header').height();
-        var w = Math.round(window.innerWidth * 0.96);
-        var h = Math.round(window.innerHeight - (25 + hh));
+        var w, h;
+
+        if (init_params.fill_window) {
+            w = window.innerWidth;
+            h = window.innerHeight;
+        } else {
+            w = Math.round(window.innerWidth * 0.96);
+            h = Math.round(window.innerHeight - (25 + hh));
+        }
 
         if (rfb) {
             var s = rfb._display.autoscale(w, h);
@@ -283,8 +286,6 @@ var CBrowser = function(reqid, target_div, init_params) {
     }
 
     function FBUComplete(rfb, fbu) {
-        UIresize();
-
         if (req_params['width'] < min_width || req_params['height'] < min_height) {
             clientResize();
         }
@@ -393,7 +394,6 @@ var CBrowser = function(reqid, target_div, init_params) {
         // the resolution of the session
         clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(function(){
-            UIresize();
             clientResize();
             clientPosition();
         }, 500);
