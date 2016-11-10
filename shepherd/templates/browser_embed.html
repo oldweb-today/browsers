@@ -1,29 +1,16 @@
-<!DOCTYPE>
+<!DOCTYPE html>
 <html>
 
 <head>
 <script src="/static/jquery-2.1.4.min.js"></script>
 <script src="/static/browser_controller.js"></script>
 
-<style>
-body, div {
-    margin: 0px;
-    padding: 0px;
-}
-#id {
-    width: 100%;
-    height: 100%;
-}
-#countdown {
-    display: none;
-}
-#browserMsg {
-    margin: 8px;
-    margin-top: 20px;
-    text-align: center;
-    width: 100%;
-}
-</style>
+<link href="/static/default.css" rel="stylesheet"/>
+
+{% if css %}
+<link href="{{ css }}" rel="stylesheet"/>
+{% endif %}
+
 <script>
 window.reqid = "{{ container_data.reqid }}";
 
@@ -38,9 +25,16 @@ $(function() {
         }
     }
 
+    var proxy_ws = undefined;
+
+    if (!window.location.port) {
+        proxy_ws = "_websockify?port=";
+    }
+
     var cb = new CBrowser(reqid, "#browser", {"on_countdown": on_countdown,
                                               "on_event": on_event,
-                                              "audio": true,
+                                              "audio": {{'true' if audio else 'false'}},
+                                              "proxy_ws": proxy_ws,
                                               "fill_window": true,
                                               "inactiveSecs": 10});
 });

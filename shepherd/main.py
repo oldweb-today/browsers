@@ -11,15 +11,10 @@ import base64
 from dockercontroller import DockerController
 
 
-@route('/view/<browser>/<url:path>')
-@jinja2_view('browser_embed.html', template_lookup=['templates'])
-def load_template(browser, url):
+def load_browser(browser, url):
     """ Load a given url with a specified browser
         No proxy settings are applied, browser should run in normal live mode
     """
-    if request.query_string:
-        url += '?' + request.query_string
-
     container_data = {
         'url': url,
         'browser': browser,
@@ -36,7 +31,27 @@ def load_template(browser, url):
             'container_data': container_data
            }
 
+@route('/embed/<browser>')
+@jinja2_view('browser_embed.html', template_lookup=['templates'])
+def route_view_url_with_options(browser):
+    url = request.query.getunicode('url')
+
+    result = load_browser(browser, url)
+    result['css'] = request.query.getunicode('css', '')
+    return result
+
+
+@route('/view/<browser>/<url:path>')
+@jinja2_view('browser_embed.html', template_lookup=['templates'])
+def route_view_url(browser, url):
+    if request.query_string:
+        url += '?' + request.query_string
+
+    return load_browser(browser, url)
+
+
 @route('/request_browser/<browser>', method='POST')
+@jinja2_view('browser_embed.html', template_lookup=['templates'])
 def request_browser(browser):
     """
 request a new browser with specified container data

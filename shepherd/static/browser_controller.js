@@ -91,7 +91,7 @@ var CBrowser = function(reqid, target_div, init_params) {
 
     function init_html() {
         $(target_div).append($("<div>", {"id": "browserMsg", "class": "loading"}).text(""));
-        $(target_div).append($("<div>", {"id": "noVNC_screen"}).append("<canvas>"));
+        $(target_div).append($("<div>", {"id": "noVNC_screen"}).append($("<canvas>", {"tabindex": "1"})));
 
         canvas().hide();
 
@@ -139,8 +139,8 @@ var CBrowser = function(reqid, target_div, init_params) {
 
         req_params['width'] = Math.max(w, min_width);
         req_params['height'] = Math.max(h, min_height);
-        req_params['width'] = parseInt(req_params['width'] / 16) * 16;
-        req_params['height'] = parseInt(req_params['height'] / 16) * 16;
+        req_params['width'] = parseInt(req_params['width'] / 8) * 8;
+        req_params['height'] = parseInt(req_params['height'] / 8) * 8;
 
         req_params['reqid'] = reqid;
 
@@ -310,13 +310,12 @@ var CBrowser = function(reqid, target_div, init_params) {
 
         try {
             rfb = new RFB({'target':       canvas()[0],
-                           'encrypt':      WebUtil.getQueryVar('encrypt',
-                                                               (window.location.protocol === "https:")),
-                           'repeaterID':   WebUtil.getQueryVar('repeaterID', ''),
-                           'true_color':   WebUtil.getQueryVar('true_color', true),
-                           'local_cursor': WebUtil.getQueryVar('cursor', true),
-                           'shared':       WebUtil.getQueryVar('shared', true),
-                           'view_only':    WebUtil.getQueryVar('view_only', false),
+                           'encrypt':      (window.location.protocol === "https:"),
+                           'repeaterID':   '',
+                           'true_color':   true,
+                           'local_cursor': true,
+                           'shared':       false,
+                           'view_only':    false,
                            'onUpdateState':  updateState,
                            'onClipboard':    onVNCCopyCut,
                            'onFBUComplete':  FBUComplete});
