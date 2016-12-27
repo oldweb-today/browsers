@@ -49,7 +49,7 @@ browser_config:
         vnc: 6080
         cmd: 6082
 
-    browser_image_prefix: webrecorder/browser-
+    browser_image_prefix: oldwebtoday/
 
     browser_volumes: ''
     shm_size: 1g

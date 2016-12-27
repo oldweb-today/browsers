@@ -4,12 +4,15 @@
 
 name=$(basename $PWD)
 
-#docker build -t "netcapsule/$name" .
-opt="-t webrecorder/$name:latest"
+opt=""
+
+if [ ! -f "$PWD/tags" ]; then
+    opt="-t oldwebtoday/$name"
+fi
 
 if [ -a $PWD/tags ]; then
     while read tag; do
-        opt="-t webrecorder/$name:$tag $opt"
+        opt="-t oldwebtoday/$tag $opt"
     done <$PWD/tags
 fi
 
