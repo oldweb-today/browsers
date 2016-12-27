@@ -51,7 +51,6 @@ def route_view_url(browser, url):
 
 
 @route('/request_browser/<browser>', method='POST')
-@jinja2_view('browser_embed.html', template_lookup=['templates'])
 def request_browser(browser):
     """
 request a new browser with specified container data
