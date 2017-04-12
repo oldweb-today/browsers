@@ -13,6 +13,7 @@ services:
             - NETWORK_NAME=browsers_default
             - IDLE_TIMEOUT=60
             - AUDIO_TYPE=opus
+            - CONTAINER_EXPIRE_SECS=1200
 
         depends_on:
             - redis

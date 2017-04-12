@@ -91,7 +91,7 @@ var CBrowser = function(reqid, target_div, init_params) {
 
     function init_html() {
         $(target_div).append($("<div>", {"id": "browserMsg", "class": "loading"}).text(""));
-        $(target_div).append($("<div>", {"id": "noVNC_screen"}).append($("<canvas>", {"tabindex": "1"})));
+        $(target_div).append($("<div>", {"id": "noVNC_screen"}).append($("<canvas>", {"tabindex": "0"})));
 
         canvas().hide();
 
@@ -250,6 +250,10 @@ var CBrowser = function(reqid, target_div, init_params) {
             return;
         }
 
+        if (init_params.fill_window) {
+            canvas().focus();
+        }
+
         rfb.get_keyboard().set_focused(true);
         rfb.get_mouse().set_focused(true);
     }
@@ -373,6 +377,10 @@ var CBrowser = function(reqid, target_div, init_params) {
             }
         } else if (state == "connected") {
             canvas().show();
+            if (init_params.fill_window) {
+                canvas().focus();
+            }
+
             msgdiv().hide();
 
             ever_connected = true;

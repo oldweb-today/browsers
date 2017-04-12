@@ -28,7 +28,8 @@ def load_browser(browser, url):
     container_data['reqid'] = reqid
 
     return {'STATIC_PREFIX': '/static',
-            'container_data': container_data
+            'container_data': container_data,
+            'audio': os.environ.get('AUDIO_TYPE', ''),
            }
 
 @route('/embed/<browser>')
