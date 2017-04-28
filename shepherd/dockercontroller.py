@@ -529,6 +529,7 @@ class DockerController(object):
 
         self._copy_env(env, 'PROXY_HOST')
         self._copy_env(env, 'PROXY_PORT')
+        self._copy_env(env, 'PROXY_GET_CA')
         self._copy_env(env, 'SCREEN_WIDTH', width)
         self._copy_env(env, 'SCREEN_HEIGHT', height)
         self._copy_env(env, 'IDLE_TIMEOUT')
