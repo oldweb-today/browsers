@@ -470,125 +470,230 @@ var CBrowser = function(reqid, target_div, init_params) {
         return ws_url;
     }
 
+    var audioInited = false;
+
     function doAudio(browser_info) {
+        if (audioInited) {
+            return;
+        }
+
+        audioInited = true;
+
         var mime_type = 'audio/webm; codecs="opus"';
         var audio_ws = undefined;
 
-        var buffQ = [];
-        var firstBuffer = undefined;
-        var source = undefined;
-        var err_count = 0;
-        var initing = false;
+        var MAX_BUFFERS = 250;
+        var MIN_START_BUFFERS = 4;
 
         var ws_url = get_ws_url(browser_info);
 
-        function createSource() {
+        var buffQ;
+        var buffCount = 0;
+        //var firstBuffer = undefined;
+        var err_count = 0;
+
+        var initing = false;
+        var updating = false;
+
+        var audio = null;
+        var mediasource = null;
+        var source = null;
+
+        function initAudio() {
             if (initing) {
                 console.log("already initing");
                 return;
             }
 
             initing = true;
+            console.log("Init Audio");
 
-            var ms = new MediaSource();
-            ms.addEventListener("sourceopen", openSource);
-            ms.addEventListener("error", restart);
+            //console.log("Creating New Source");
 
-            var sound = new Audio();
-            sound.src = URL.createObjectURL(ms);
-            sound.autoplay = true;
-            sound.load();
-            sound.play();
+            mediasource = new MediaSource();
+            mediasource.addEventListener("sourceopen", openSource);
+            mediasource.addEventListener("error", function(event) {
+                console.log("MediaSource Error");
+                restart();
+            });
+
+            buffQ = [];
+            buffCount = 0;
+            err_count = 0;
+
+            audio = new Audio();
+            audio.src = URL.createObjectURL(mediasource);
+            audio.autoplay = true;
+            audio.load();
+            audio.play();
+        }
+
+        function closeAudio() {
+            console.log("Close Audio");
+            try {
+                if (mediasource) {
+                    mediasource.removeSourceBuffer(source);
+                    if (mediasource.readyState == "open") {
+                        mediasource.endOfStream();
+                    }
+                }
+                source = null;
+
+            } catch(e) {
+                console.log("Error Closing: " + e);
+            }
+            mediasource = null;
+
+            try {
+                if (audio) {
+                    audio.src = "";
+                    audio.load();
+                }
+                audio = null;
+            } catch (e) {
+                console.log("Error Closing: " + e);
+            }
         }
 
         function openSource() {
             var new_source = undefined;
 
-            try {
-                new_source = this.addSourceBuffer(mime_type);
-            } catch (e) {
-                console.log("Audio Error: " + e);
+            if (this != mediasource) {
                 return;
             }
 
-            new_source.mode = "sequence";
-            new_source.timestampOffset = 0;
-            new_source.addEventListener("error", restart);
-            new_source.addEventListener("updateend", update_next);
-            if (firstBuffer) {
-                try {
-                    new_source.appendBuffer(firstBuffer);
-                } catch (e) {
-                    console.log("Audio Error: " + e);
-                }
+            if (mediasource.sourceBuffers.length) {
+                console.log("source already open");
+                return;
             }
-            source = new_source;
+
+            try {
+                //console.log("Opening Source: " + mime_type);
+                new_source = mediasource.addSourceBuffer(mime_type);
+            } catch (e) {
+                console.log("Opening Source Error: " + e);
+                return;
+            }
+
+            //console.log("Audio Opened!");
+            new_source.mode = "sequence";
+            //new_source.timestampOffset = 0;
+            new_source.addEventListener("error", function() {
+                console.log("source error");
+                restart();
+            });
+
+            new_source.addEventListener("updateend", update_next);
+
             initing = false;
+            source = new_source;
+
+            //console.log("Ready!");
         }
 
         function restart(e) {
-            source = undefined;
-
-            if (err_count == 0) {
-                setTimeout(createSource, 500);
-            }
-
             err_count++;
-        }
 
-        function update_next() {
-            if (!buffQ.length || !source) {
+            if (err_count > 1) {
                 return;
             }
 
-            buffer = buffQ.shift();
+            console.log('Audio Restarting');
 
-            if (!firstBuffer) {
-                firstBuffer = buffer;
+            closeAudio();
+            audio_ws.close();
+            audio_ws = null;
+
+            setTimeout(function() {
+                initAudio();
+                init_ws();
+            }, 1000);
+        }
+
+        function merge_buffers() {
+            var merged;
+
+            if (buffQ.length == 1) {
+                merged = buffQ[0];
+            } else {
+                //concatenate all pending buffers into one:
+                var size = 0;
+                for (var i = 0; i < buffQ.length; i++) {
+                    size += buffQ[i].length;
+                }
+
+                merged = new Uint8Array(size);
+                size = 0;
+                for (var i = 0; i < buffQ.length; i++) {
+                    var curr = buffQ[i];
+                    if (curr.length <= 0) {
+                        continue;
+                    }
+                    merged.set(curr, size);
+                    size += curr.length;
+                }
             }
+
+            buffQ = [];
+            buffCount++;
+            return merged;
+        }
+
+        function update_next() {
+            if (updating || err_count || !buffQ.length || !source || source.updating) {
+                return;
+            }
+
+            updating = true;
+
+            if (buffCount == 0 && buffQ.length < MIN_START_BUFFERS) {
+                updating = false;
+                return;
+            }
+
+            buffer = merge_buffers();
+
+            //if (!firstBuffer) {
+            //    firstBuffer = buffer;
+            //}
+
+            //console.log("Adding Buffer");
 
             try {
                 source.appendBuffer(buffer);
                 err_count = 0;
             } catch (e) {
+                console.log("Error Adding Buffer");
                 console.log(e);
                 restart();
             }
+
+            updating = false;
         }
 
         function init_ws() {
-            audio_ws = new WebSocket(ws_url);
+            audio_ws = new WebSocket(ws_url, "binary");
             audio_ws.binaryType = 'arraybuffer';
-            audio_ws.addEventListener("open", ws_open);
+            //audio_ws.addEventListener("open", ws_open);
             audio_ws.addEventListener("message", ws_message);
             audio_ws.addEventListener('error', ws_error);
         }
 
-        function ws_open(event) {
-            createSource();
-        }
+        //function ws_open(event) {
+            //createSource();
+        //}
 
         function ws_message(event) {
             //var buffer = new Uint8Array(event.data);
             var buffer = event.data;
 
-            if (!source) {
-                console.log("no source, dropping audio");
-                if (!initing) {
-                    createSource();
-                }
-                return;
-            }
-
-            if (buffQ.length < 5) {
-                buffQ.push(buffer);
+           if (buffQ.length < MAX_BUFFERS) {
+                buffQ.push(new Uint8Array(buffer));
             } else {
-                console.log("dropping audio");
+                console.log("overflowing, dropping audio");
             }
 
-            if (!source.updating) {
-                update_next();
-            }
+            update_next();
         }
 
         function ws_error(e) {
@@ -596,6 +701,7 @@ var CBrowser = function(reqid, target_div, init_params) {
             setTimeout(init_ws, 500);
         }
 
+        initAudio();
         init_ws();
     }
 
