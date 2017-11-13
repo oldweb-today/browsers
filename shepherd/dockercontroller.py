@@ -303,6 +303,7 @@ class DockerController(object):
                                  network_mode=self.network_name,
                                  shm_size=self.shm_size,
                                  cap_add=['ALL'],
+                                 security_opt=['apparmor=unconfined'],
                                 )
         return host_config
 

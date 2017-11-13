@@ -452,6 +452,7 @@ var CBrowser = function(reqid, target_div, init_params) {
         });
     }
 
+    var audioCount = 0;
 
     function get_ws_url(browser_info) {
         var ws_url;
@@ -461,6 +462,7 @@ var CBrowser = function(reqid, target_div, init_params) {
         if (init_params.proxy_ws) {
             var audio_port = browser_info.cmd_host.split(":")[1];
             ws_url += window.location.host + "/" + init_params.proxy_ws + audio_port;
+            ws_url += "&count=" + audioCount++;
         } else {
             ws_url += browser_info.cmd_host + "/audio_ws";
         }
@@ -468,17 +470,29 @@ var CBrowser = function(reqid, target_div, init_params) {
         return ws_url;
     }
 
+    function get_http_url(browser_info) {
+        var audio_port = browser_info.cmd_host.split(":")[1];
+        var http_url = window.location.origin + "/_audio.webm?port=" + audio_port;
+        http_url += "&count=" + audioCount++;
+        return http_url;
+    }
+
+    var audioWS = null;
 
     function WSAudio(ws_url) {
         var MIME_TYPE = 'audio/webm; codecs="opus"';
 
         var MAX_BUFFERS = 250;
-        var MIN_START_BUFFERS = 4;
+        var MIN_START_BUFFERS = 10;
+
+        var MAX_ERRORS = 1;
 
         this.buffQ = [];
         this.buffCount = 0;
 
         this.ws_url = ws_url;
+        this.lastTs = undefined;
+        this.ws = null;
 
         this.errCount = 0;
 
@@ -489,7 +503,7 @@ var CBrowser = function(reqid, target_div, init_params) {
         this.mediasource = null;
         this.buffer = null;
 
-        this.lastTs = undefined;
+        this.buffSize = 0;
 
         this.initAudio = function() {
             if (this.initing) {
@@ -522,10 +536,6 @@ var CBrowser = function(reqid, target_div, init_params) {
 
             var buffer = null;
 
-            if (this.audio.error) {
-                console.log(this.audio.error);
-            }
-
             try {
                 buffer = this.mediasource.addSourceBuffer(MIME_TYPE);
             } catch (e) {
@@ -534,10 +544,10 @@ var CBrowser = function(reqid, target_div, init_params) {
             }
 
             buffer.mode = "sequence";
-            buffer.timestampOffset = 0;
+            //buffer.timestampOffset = 0;
 
             buffer.addEventListener("error", (function(event) {
-                this.audioError("buffer error", event);
+                this.audioError("buffer error: " + (this.buffCount), event);
             }).bind(this));
 
             buffer.addEventListener("updateend", this.updateNext.bind(this));
@@ -549,7 +559,7 @@ var CBrowser = function(reqid, target_div, init_params) {
         };
 
         this.close = function() {
-            console.log("Close Audio");
+            console.log("Closing Audio");
             try {
                 if (this.mediasource) {
                     this.mediasource.removeSourceBuffer(this.buffer);
@@ -571,6 +581,14 @@ var CBrowser = function(reqid, target_div, init_params) {
                 this.audio = null;
             } catch (e) {
                 console.log("Error Closing: " + e);
+            }
+
+            if (this.ws) {
+                try {
+                    this.ws.close();
+                } catch(e) {}
+
+                this.ws = null;
             }
         }
 
@@ -597,21 +615,18 @@ var CBrowser = function(reqid, target_div, init_params) {
             if (this.buffQ.length == 1) {
                 merged = this.buffQ[0];
             } else {
-                //concatenate all pending buffers into one:
-                var size = 0;
-                for (var i = 0; i < this.buffQ.length; i++) {
-                    size += this.buffQ[i].length;
-                }
+                merged = new Uint8Array(this.buffSize);
 
-                merged = new Uint8Array(size);
-                size = 0;
-                for (var i = 0; i < this.buffQ.length; i++) {
+                var length = this.buffQ.length;
+                var offset = 0;
+
+                for (var i = 0; i < length; i++) {
                     var curr = this.buffQ[i];
                     if (curr.length <= 0) {
                         continue;
                     }
-                    merged.set(curr, size);
-                    size += curr.length;
+                    merged.set(curr, offset);
+                    offset += curr.length;
                 }
             }
 
@@ -621,40 +636,46 @@ var CBrowser = function(reqid, target_div, init_params) {
         }
 
         this.updateNext = function() {
-            if (this.initing || this.updating || this.errCount || !this.buffQ.length || !this.buffer || this.buffer.updating) {
+            if (this.initing || this.updating || (this.errCount >= MAX_ERRORS) || !this.buffQ.length || !this.buffer || this.buffer.updating) {
+                return;
+            }
+
+            if (this.buffCount == 0 && this.buffQ.length < MIN_START_BUFFERS) {
                 return;
             }
 
             this.updating = true;
 
-            if (this.buffCount == 0 && this.buffQ.length < MIN_START_BUFFERS) {
-                this.updating = false;
-                return;
-            }
-
             try {
-                this.buffer.appendBuffer(this.mergeBuffers());
+                var merged = this.mergeBuffers();
+                this.buffer.appendBuffer(merged);
+                this.buffSize -= merged.length;
+                this.buffSize = 0;
                 this.errCount = 0;
             } catch (e) {
-                this.audioError("Error Adding Buffer");
+                this.audioError("Error Adding Buffer: " + e);
             }
 
             this.updating = false;
         }
 
         this.audioError = function(msg, event) {
-            console.log(msg);
-
             if (this.audio.error) {
+                console.log(msg);
                 console.log(this.audio.error);
+                //console.log("num processed: " + this.buffCount);
                 this.errCount += 1;
+                if (this.errCount == 1) {
+                    setTimeout(window.restartAudio, 3000);
+                }
             }
         }
 
         this.queue = function(buffer) {
-            if (this.buffQ.length >= MAX_BUFFERS) {
+            if (this.buffSize > 20000) {
                 if (this.buffCount > 0) {
-                    this.buffQ.shift();
+                    res = this.buffQ.shift();
+                    this.buffSize -= res.length;
                     console.log("dropping old buffers");
                 } else {
                     // don't drop the starting buffers
@@ -664,57 +685,90 @@ var CBrowser = function(reqid, target_div, init_params) {
                 }
             }
 
-            this.buffQ.push(new Uint8Array(buffer));
+            buffer = new Uint8Array(buffer);
+            this.buffQ.push(buffer);
+            this.buffSize += buffer.length;
+
             this.updateNext();
         }
 
         this.initWs = function() {
-            this.ws = new WebSocket(this.ws_url, "binary");
-            this.ws.binaryType = 'arraybuffer';
-            this.ws.addEventListener("message", this.ws_message.bind(this));
-            this.ws.addEventListener('error', this.ws_error.bind(this));
-        }
-
-        this.ws_message = function(event) {
-            if (!this.errCount) {
-                this.queue(event.data);
+            try {
+                this.ws = new WebSocket(this.ws_url, "binary");
+            } catch (e) {
+                this.audioError("WS Open Failed");
             }
-            this.lastTs = Date.now();
+
+            this.ws.binaryType = 'arraybuffer';
+            this.ws.addEventListener("open", ws_open);
+            this.ws.addEventListener("close", ws_close);
+            this.ws.addEventListener("message", ws_message);
+            this.ws.addEventListener('error', ws_error);
         }
 
-        this.ws_error = function() {
-            this.audioError("WS Error");
+        var ws_open = function(event) {
+            if (!audioWS || this != audioWS.ws) {
+                return;
+            }
+
+            this.send("ready");
+        }
+
+        var ws_message = function(event) {
+            if (!audioWS || this != audioWS.ws) {
+                return;
+            }
+
+            if (audioWS.errCount < MAX_ERRORS) {
+                audioWS.queue(event.data);
+            }
+        }
+
+        var ws_error = function() {
+            if (!audioWS || this != audioWS.ws) {
+                return;
+            }
+
+            audioWS.audioError("WS Error");
+        }
+
+        var ws_close = function() {
+            if (!audioWS || this != audioWS.ws) {
+                return;
+            }
+
+            audioWS.audioError("WS Close");
         }
 
         this.initAudio();
     }
 
     var audioInit = false;
+    var browser_info;
 
-    function doAudio(browser_info) {
+    function doAudio(info) {
         if (audioInit) {
             return;
         }
 
+        browser_info = info;
+
         audioInit = true;
 
-        var ws_url = get_ws_url(browser_info);
+        window.restartAudio();
+    }
 
-        var audioWS = new WSAudio(ws_url);
-
-        var lastTs;
-
-        function checkAudio() {
-            if (!audioWS.initing && !audioWS.valid(lastTs)) {
-                console.log("Reiniting");
-                audioWS.close();
-                audioWS = new WSAudio(ws_url);
-            } else {
-                lastTs = audioWS.lastTs;
-            }
+    window.restartAudio = function() {
+        if (audioWS && audioWS.initing) {
+            return;
         }
 
-        setInterval(checkAudio, 3000);
+        if (audioWS) {
+            console.log("Reiniting Audio");
+            audioWS.close();
+        }
+
+        audioWS = new WSAudio(get_ws_url(browser_info));
     }
 
     start();
