@@ -162,7 +162,7 @@ class DockerController(object):
         else:
             return None
 
-    def load_browser(self, name, include_icon=False):
+    def get_browser_info(self, name, include_icon=False):
         tag = self.browser_image_prefix + name
 
         try:
@@ -234,11 +234,11 @@ class DockerController(object):
 
     def new_container(self, browser_id, env=None, default_host=None):
         #browser = self.browsers.get(browser_id)
-        browser = self.load_browser(browser_id)
+        browser = self.get_browser_info(browser_id)
 
         # get default browser
         if not browser:
-            browser = self.load_browser(browser_id)
+            browser = self.get_browser_info(browser_id)
             #browser = self.browsers.get(self.default_browser)
 
         if browser.get('req_width'):
@@ -554,6 +554,54 @@ class DockerController(object):
 
         info['ttl'] = self.duration
         return info
+
+    def clone_browser(self, reqid, id_, name):
+        short_id = self.redis.hget('req:' + reqid, 'id')
+
+        #try:
+        #    container = self.cli.containers.get(short_id)
+        #except Exception as e:
+        #    print(e)
+        #    print('Container Not Found: ' + short_id)
+        #    return {'error': str(e)}
+
+        env = {}
+        self._copy_env(env, 'PROXY_HOST')
+        self._copy_env(env, 'PROXY_PORT')
+        self._copy_env(env, 'PROXY_GET_CA')
+        self._copy_env(env, 'SCREEN_WIDTH')
+        self._copy_env(env, 'SCREEN_HEIGHT')
+        self._copy_env(env, 'IDLE_TIMEOUT')
+        self._copy_env(env, 'AUDIO_TYPE')
+
+        env_list = []
+        for n, v in env.items():
+            if n and v:
+                env_list.append(n + '=' + v)
+
+        config = {'Env': env_list,
+                  'Labels': {'wr.name': name}}
+
+        try:
+            exec_id = self.cli.exec_create(container=short_id,
+                                           cmd="bash -c 'kill $(cat /tmp/browser_pid)'")
+
+            self.cli.exec_start(exec_id=exec_id['Id'], detach=False, tty=False)
+
+            time.sleep(0.5)
+
+        except Exception as e:
+            print(e)
+
+        try:
+            res = self.cli.commit(container=short_id,
+                                  repository='oldwebtoday/user/' + id_,
+                                  conf=config)
+
+            return {'success': '1'}
+        except Exception as e:
+            print(e)
+            return {'error': str(e)}
 
     def get_random_browser(self):
         browsers = self.load_avail_browsers()
