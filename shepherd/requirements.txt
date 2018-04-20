@@ -1,4 +1,4 @@
-docker-py
+docker
 bottle
 gevent
 uwsgi
