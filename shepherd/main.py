@@ -38,10 +38,8 @@ class Main(object):
         if not reqid:
             reqid = self.dc.register_request(container_data)
 
-        container_data['reqid'] = reqid
-
         return {'STATIC_PREFIX': '/static',
-                'container_data': container_data,
+                'reqid': reqid,
                 'audio': os.environ.get('AUDIO_ALLOWED', '1'),
                }
 
@@ -82,6 +80,13 @@ class Main(object):
                 url += '?' + request.query_string
 
             return self.load_browser(browser, url)
+
+        @route('/attach/<reqid>')
+        @jinja2_view('browser_embed.html', template_lookup=['templates'])
+        def route_attach_view(reqid):
+            return {'reqid': reqid,
+                    'audio': os.environ.get('AUDIO_ALLOWED', '1')
+                   }
 
         @route('/request_browser/<browser>', method='POST')
         def request_browser(browser):
@@ -137,6 +142,16 @@ class Main(object):
 
             response.headers['Cache-Control'] = 'no-cache, no-store, max-age=0, must-revalidate'
             return resp
+
+        @route('/remove_browser')
+        def remove_browser():
+            reqid = request.query.get('reqid', '')
+
+            resp = self.dc.remove_browser(reqid)
+            if resp:
+                return {'success': 'deleted'}
+            else:
+                return {'error': 'not_deleted'}
 
         @route('/static/<filepath:path>')
         def server_static(filepath):

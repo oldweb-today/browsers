@@ -189,15 +189,6 @@ class DockerController(object):
 
         return props
 
-    def _get_host_port(self, info, port, default_host):
-        info = info['NetworkSettings']['Ports'][str(port) + '/tcp']
-        info = info[0]
-        host = info['HostIp']
-        if host == '0.0.0.0' and default_host:
-            host = default_host
-
-        return host + ':' + info['HostPort']
-
     def _get_port(self, info, port):
         info = info['NetworkSettings']['Ports'][str(port) + '/tcp']
         info = info[0]
@@ -206,9 +197,9 @@ class DockerController(object):
     def sid(self, id):
         return id[:12]
 
-    def timed_new_container(self, browser, env, host, reqid, audio=None):
+    def timed_new_container(self, browser, env, host, reqid, audio, opts):
         start = time.time()
-        info = self.new_container(browser, env, host, audio=audio)
+        info = self.new_container(browser, env, host, audio=audio, opts=opts)
         end = time.time()
         dur = end - start
 
@@ -222,7 +213,8 @@ class DockerController(object):
 
         return info
 
-    def new_container(self, browser_id, env=None, default_host=None, audio=None):
+    def new_container(self, browser_id, env=None, default_host=None, audio=None, opts=None):
+        #browser = self.browsers.get(browser_id)
         browser = self.get_browser_info(browser_id)
 
         # get default browser
@@ -240,7 +232,7 @@ class DockerController(object):
         print('Launching ' + image)
 
         try:
-            container = self.create_container(image, env)
+            container = self.create_container(image, env, opts)
 
             info, ip = self.get_ip(container)
 
@@ -252,7 +244,7 @@ class DockerController(object):
             result = {}
 
             for port_name in self.ports:
-                result[port_name + '_host'] = self._get_host_port(info, self.ports[port_name], default_host)
+                result[port_name + '_port'] = self._get_port(info, self.ports[port_name])
 
             result['id'] = short_id
             result['ip'] = ip
@@ -285,16 +277,18 @@ class DockerController(object):
                 time.sleep(0.2)
                 pass
 
-    def create_container(self, image, env):
+    def create_container(self, image, env, opts):
         if self.volume_source:
             volumes_from = [self.volume_source]
         else:
             volumes_from = None
 
+        network_name = opts.get('network_name') or self.network_name
+
         container = self.cli.containers.run(image=image,
                                               detach=True,
                                               ports=self.port_bindings,
-                                              network=self.network_name,
+                                              network=network_name,
                                               environment=env,
                                               labels={self.label_name: self.name},
                                               volumes_from=volumes_from,
@@ -523,6 +517,8 @@ class DockerController(object):
         url = container_data.get('url', 'about:blank')
         ts = container_data.get('request_ts')
 
+        opts = {'network_name': container_data.get('network_name', self.network_name)}
+
         env = {}
         env['URL'] = url
         env['TS'] = ts
@@ -532,14 +528,14 @@ class DockerController(object):
         vnc_pass = self._make_vnc_pass()
         env['VNC_PASS'] = vnc_pass
 
-        self._copy_env(env, 'PROXY_HOST')
+        self._copy_env(env, 'PROXY_HOST', container_data.get('proxy_host'))
         self._copy_env(env, 'PROXY_PORT')
         self._copy_env(env, 'PROXY_GET_CA')
         self._copy_env(env, 'SCREEN_WIDTH', width)
         self._copy_env(env, 'SCREEN_HEIGHT', height)
         self._copy_env(env, 'IDLE_TIMEOUT')
 
-        info = self.timed_new_container(browser, env, host, reqid, audio)
+        info = self.timed_new_container(browser, env, host, reqid, audio, opts=opts)
         info['queue'] = 0
         info['vnc_pass'] = vnc_pass
 
@@ -557,6 +553,23 @@ class DockerController(object):
 
         info['ttl'] = self.duration
         return info
+
+    def remove_browser(self, reqid):
+        short_id = self.redis.hget('req:' + reqid, 'id')
+
+        try:
+            container = self.cli.containers.get(short_id)
+        except Exception as e:
+            print('Container Not Found: ' + short_id)
+            return False
+
+        try:
+            container.remove(force=True)
+        except Exception as e:
+            print('Remove error: ' + str(e))
+            return False
+
+        return True
 
     def clone_browser(self, reqid, id_, name):
         short_id = self.redis.hget('req:' + reqid, 'id')
