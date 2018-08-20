@@ -216,9 +216,9 @@ class DockerController(object):
     def sid(self, id):
         return id[:12]
 
-    def timed_new_container(self, browser, env, host, reqid):
+    def timed_new_container(self, browser, env, host, reqid, audio=None):
         start = time.time()
-        info = self.new_container(browser, env, host)
+        info = self.new_container(browser, env, host, audio=audio)
         end = time.time()
         dur = end - start
 
@@ -232,8 +232,7 @@ class DockerController(object):
 
         return info
 
-    def new_container(self, browser_id, env=None, default_host=None):
-        #browser = self.browsers.get(browser_id)
+    def new_container(self, browser_id, env=None, default_host=None, audio=None):
         browser = self.get_browser_info(browser_id)
 
         # get default browser
@@ -280,7 +279,7 @@ class DockerController(object):
 
             result['id'] = short_id
             result['ip'] = ip
-            result['audio'] = os.environ.get('AUDIO_TYPE', '')
+            result['audio'] = audio
             return result
 
         except Exception as e:
@@ -497,7 +496,7 @@ class DockerController(object):
     def _copy_env(self, env, name, override=None):
         env[name] = override or os.environ.get(name)
 
-    def init_new_browser(self, reqid, host, width=None, height=None):
+    def init_new_browser(self, reqid, host, width=None, height=None, audio='opus'):
         req_key = 'req:' + reqid
 
         container_data = self.redis.hgetall(req_key)
@@ -510,6 +509,7 @@ class DockerController(object):
             container_data['ttl'] = self.redis.ttl('ct:' + container_data['id'])
             return container_data
 
+
         queue_pos = self.am_i_next(reqid)
 
         if queue_pos >= 0:
@@ -520,10 +520,10 @@ class DockerController(object):
         ts = container_data.get('request_ts')
 
         env = {}
-
         env['URL'] = url
         env['TS'] = ts
         env['BROWSER'] = browser
+        env["AUDIO_TYPE"] = audio or ''
 
         vnc_pass = self._make_vnc_pass()
         env['VNC_PASS'] = vnc_pass
@@ -534,9 +534,8 @@ class DockerController(object):
         self._copy_env(env, 'SCREEN_WIDTH', width)
         self._copy_env(env, 'SCREEN_HEIGHT', height)
         self._copy_env(env, 'IDLE_TIMEOUT')
-        self._copy_env(env, 'AUDIO_TYPE')
 
-        info = self.timed_new_container(browser, env, host, reqid)
+        info = self.timed_new_container(browser, env, host, reqid, audio)
         info['queue'] = 0
         info['vnc_pass'] = vnc_pass
 
