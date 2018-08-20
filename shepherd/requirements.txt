@@ -5,3 +5,5 @@ uwsgi
 jinja2
 redis
 pyyaml
+nose2
+nose2[coverage_plugin]

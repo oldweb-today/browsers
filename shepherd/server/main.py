@@ -1,14 +1,13 @@
 import gevent.monkey; gevent.monkey.patch_all()
 import gevent
 
-from bottle import route, run, template, request, default_app, jinja2_view
-from bottle import redirect, static_file, response, debug, HTTPError
+from bottle import route, request, default_app, jinja2_view
+from bottle import static_file, response, debug, HTTPError
 
 import os
-import datetime
 import base64
 
-from dockercontroller import DockerController
+from server.controller.docker import DockerController
 
 
 # ============================================================================
@@ -126,10 +125,11 @@ class Main(object):
 
             width = request.query.get('width')
             height = request.query.get('height')
+            audio = request.query.get("audio")
 
             host = request.urlparts.netloc.split(':')[0]
 
-            resp = self.dc.init_new_browser(reqid, host, width, height)
+            resp = self.dc.init_new_browser(reqid, host, width, height, audio)
 
             if not resp:
                 response.status = 404
