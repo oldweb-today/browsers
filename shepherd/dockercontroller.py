@@ -1,6 +1,4 @@
-from docker.client import Client
-from docker.utils import kwargs_from_env
-
+import docker
 import os
 import base64
 import time
@@ -45,7 +43,7 @@ class DockerController(object):
         self.api_version = config['api_version']
 
         self.ports = config['ports']
-        self.port_bindings=dict((port, None) for port in self.ports.values())
+        self.port_bindings = dict((int(port), None) for port in self.ports.values())
 
         self.max_containers = config['max_containers']
 
@@ -73,13 +71,7 @@ class DockerController(object):
                 time.sleep(5)
 
     def _init_cli(self):
-        if os.path.exists('/var/run/docker.sock'):
-            self.cli = Client(base_url='unix://var/run/docker.sock',
-                              version=self.api_version)
-        else:
-            kwargs = kwargs_from_env(assert_hostname=False)
-            kwargs['version'] = self.api_version
-            self.cli = Client(**kwargs)
+        self.cli = docker.from_env()
 
     def _init_redis(self, config):
         redis_url = os.environ['REDIS_BROWSER_URL']
@@ -120,15 +112,14 @@ class DockerController(object):
 
         browsers = {}
         try:
-            images = self.cli.images(filters=filters)
+            images = self.cli.images.list(filters=filters)
 
             for image in images:
-                tags = image.get('RepoTags')
-                id_ = self._get_primary_id(tags)
+                id_ = self._get_primary_id(image.tags)
                 if not id_:
                     continue
 
-                props = self._browser_info(image['Labels'])
+                props = self._browser_info(image.labels)
                 props['id'] = id_
 
                 browsers[id_] = props
@@ -166,11 +157,10 @@ class DockerController(object):
         tag = self.browser_image_prefix + name
 
         try:
-            image = self.cli.inspect_image(tag)
-            tags = image.get('RepoTags')
-            props = self._browser_info(image['Config']['Labels'], include_icon=include_icon)
-            props['id'] = self._get_primary_id(tags)
-            props['tags'] = tags
+            image = self.cli.images.get(tag)
+            props = self._browser_info(image.labels, include_icon=include_icon)
+            props['id'] = self._get_primary_id(image.tags)
+            props['tags'] = image.tags
             return props
 
         except:
@@ -249,26 +239,13 @@ class DockerController(object):
         image = browser['tags'][0]
         print('Launching ' + image)
 
-        short_id = None
-
         try:
-            host_config = self.create_host_config()
+            container = self.create_container(image, env)
 
-            container = self.cli.create_container(image=image,
-                                                  ports=list(self.ports.values()),
-                                                  environment=env,
-                                                  host_config=host_config,
-                                                  labels={self.label_name: self.name},
-                                                  )
-            id_ = container.get('Id')
-            short_id = self.sid(id_)
+            info, ip = self.get_ip(container)
 
-            res = self.cli.start(container=id_)
-
-            info = self.cli.inspect_container(id_)
-            ip = info['NetworkSettings']['IPAddress']
-            if not ip:
-                ip = info['NetworkSettings']['Networks'][self.network_name]['IPAddress']
+            # container.short_id is only 10 in length for some reason
+            short_id = self.sid(container.id)
 
             self.redis.hset('all_containers', short_id, ip)
 
@@ -290,26 +267,51 @@ class DockerController(object):
 
             return {}
 
-    def create_host_config(self):
+    def get_ip(self, container):
+        # wait for ip to be available
+        while True:
+            try:
+                container.reload()
+
+                info = container.attrs
+
+                ip = info['NetworkSettings']['IPAddress']
+                if not ip:
+                    ip = info['NetworkSettings']['Networks'][self.network_name]['IPAddress']
+
+                return info, ip
+            except:
+                print('Waiting for init')
+                time.sleep(0.2)
+                pass
+
+    def create_container(self, image, env):
         if self.volume_source:
             volumes_from = [self.volume_source]
         else:
             volumes_from = None
 
-        host_config = self.cli.create_host_config(
-                                 port_bindings=self.port_bindings,
-                                 volumes_from=volumes_from,
-                                 network_mode=self.network_name,
-                                 shm_size=self.shm_size,
-                                 cap_add=['ALL'],
-                                 security_opt=['apparmor=unconfined'],
-                                )
-        return host_config
+        container = self.cli.containers.run(image=image,
+                                              detach=True,
+                                              ports=self.port_bindings,
+                                              network=self.network_name,
+                                              environment=env,
+                                              labels={self.label_name: self.name},
+                                              volumes_from=volumes_from,
+                                              shm_size=self.shm_size,
+                                              cap_add=['ALL'],
+                                              security_opt=['apparmor=unconfined'],
+                                              #auto_remove=True,
+                                              )
+
+        return container
 
     def remove_container(self, short_id):
         print('REMOVING: ' + short_id)
         try:
-            self.cli.remove_container(short_id, force=True)
+            container = self.cli.containers.get(short_id)
+            container.remove(force=True, v=True)
+            #self.cli.remove_container(short_id, force=True)
         except Exception as e:
             print(e)
 
@@ -321,11 +323,11 @@ class DockerController(object):
         with redis.utils.pipeline(self.redis) as pi:
             pi.delete('ct:' + short_id)
 
-            if not ip:
-                return
-
             pi.hdel('all_containers', short_id)
-            pi.delete('ip:' + ip)
+
+            if ip:
+                pi.delete('ip:' + ip)
+
             if reqid:
                 pi.delete('req:' + reqid)
 
@@ -347,6 +349,7 @@ class DockerController(object):
             short_id = self.sid(event['id'])
             print('EXITED: ' + short_id)
 
+            #auto remove
             self.remove_container(short_id)
             self.redis.decr('num_containers')
             return
@@ -374,7 +377,8 @@ class DockerController(object):
     def remove_expired(self):
         all_known_ids = self.redis.hkeys('all_containers')
 
-        all_containers = {self.sid(c['Id']) for c in self.cli.containers(quiet=True)}
+        #all_containers = {self.sid(c['Id']) for c in self.cli.containers.get(quiet=True)}
+        all_containers = [self.sid(c.id) for c in self.cli.containers.list(sparse=True, all=True)]
 
         for short_id in all_known_ids:
             if not self.redis.get('ct:' + short_id):
@@ -557,12 +561,11 @@ class DockerController(object):
     def clone_browser(self, reqid, id_, name):
         short_id = self.redis.hget('req:' + reqid, 'id')
 
-        #try:
-        #    container = self.cli.containers.get(short_id)
-        #except Exception as e:
-        #    print(e)
-        #    print('Container Not Found: ' + short_id)
-        #    return {'error': str(e)}
+        try:
+            container = self.cli.containers.get(short_id)
+        except Exception as e:
+            print('Container Not Found: ' + short_id)
+            return {'error': str(e)}
 
         env = {}
         self._copy_env(env, 'PROXY_HOST')
@@ -582,10 +585,7 @@ class DockerController(object):
                   'Labels': {'wr.name': name}}
 
         try:
-            exec_id = self.cli.exec_create(container=short_id,
-                                           cmd="bash -c 'kill $(cat /tmp/browser_pid)'")
-
-            self.cli.exec_start(exec_id=exec_id['Id'], detach=False, tty=False)
+            res = container.exec_run(cmd="bash -c 'kill $(cat /tmp/browser_pid)'")
 
             time.sleep(0.5)
 
@@ -593,9 +593,8 @@ class DockerController(object):
             print(e)
 
         try:
-            res = self.cli.commit(container=short_id,
-                                  repository='oldwebtoday/user/' + id_,
-                                  conf=config)
+            res = container.commit(repository='oldwebtoday/user/' + id_,
+                                   conf=config)
 
             return {'success': '1'}
         except Exception as e:
