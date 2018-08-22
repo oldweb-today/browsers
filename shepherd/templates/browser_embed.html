@@ -15,6 +15,12 @@
 <script>
 window.reqid = "{{ reqid }}";
 
+// if in iframe, notify parent of reqid
+// todo: make optional
+if (window != window.parent) {
+    window.parent.postMessage({"type": "reqid", "reqid": window.reqid}, "*");
+}
+
 $(function() {
     function on_countdown(seconds, countdown_text) {
         $("#countdown").text(countdown_text);

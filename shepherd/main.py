@@ -88,6 +88,14 @@ class Main(object):
                     'audio': os.environ.get('AUDIO_ALLOWED', '1')
                    }
 
+        @route('/info/<reqid>')
+        def get_container_info(reqid):
+            req_key, info = self.dc.get_container_info(reqid)
+            if not info:
+                return {'error': 'not_found'}
+            else:
+                return info
+
         @route('/request_browser/<browser>', method='POST')
         def request_browser(browser):
             """

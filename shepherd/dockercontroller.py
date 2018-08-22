@@ -494,10 +494,15 @@ class DockerController(object):
     def _copy_env(self, env, name, override=None):
         env[name] = override or os.environ.get(name)
 
-    def init_new_browser(self, reqid, host, width=None, height=None, audio='opus'):
+    def get_container_info(self, reqid):
         req_key = 'req:' + reqid
 
         container_data = self.redis.hgetall(req_key)
+
+        return req_key, container_data
+
+    def init_new_browser(self, reqid, host, width=None, height=None, audio='opus'):
+        req_key, container_data = self.get_container_info(reqid)
 
         if not container_data:
             return None
