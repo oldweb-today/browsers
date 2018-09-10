@@ -12,15 +12,18 @@ var AUDIO_TYPES = [
                   ];
 
 
-var WSAudio = function(browser_info, init_params) {
-    init_params = init_params || {};
+export default function WSAudio (browser_info, init_params) {
+    var audioCount = 0;
+
+    var minLatency = 0.2; // 200ms
+    var maxLatency = 0.5  // 500ms
 
     var MAX_BUFFERS = 250;
     var MIN_START_BUFFERS = 10;
 
-    var minLatency = 0.2; // 200ms
-    var maxLatency = 0.5  // 500ms
-    this.latencyCheck = null;
+    var MAX_ERRORS = 1;
+
+    init_params = init_params || {};
 
     this.ws = null;
     this.ws_url = null;
@@ -38,6 +41,8 @@ var WSAudio = function(browser_info, init_params) {
     this.buffCount = 0;
     this.buffSize = 0;
 
+    this.latencyController = null;
+
     this.get_audio_mime = function(browser_info) {
         for (var i = 0; i < AUDIO_TYPES.length; i++) {
             if (AUDIO_TYPES[i].id == browser_info.audio) {
@@ -51,14 +56,13 @@ var WSAudio = function(browser_info, init_params) {
 
     this.get_ws_url = function(browser_info) {
         var ws_url = (window.location.protocol == "https:" ? "wss:" : "ws:");
-        ws_url += window.location.hostname;
-
-        var audio_port = browser_info.cmd_port;
 
         if (init_params.proxy_ws) {
-            ws_url += "/" + init_params.proxy_ws + audio_port;
+            var audio_port = browser_info.cmd_host.split(":")[1];
+            ws_url += window.location.host + "/" + init_params.proxy_ws + audio_port;
+            ws_url += "&count=" + audioCount++;
         } else {
-            ws_url += ":" + audio_port + "/audio_ws";
+            ws_url += browser_info.cmd_host + "/audio_ws";
         }
 
         return ws_url;
@@ -66,10 +70,6 @@ var WSAudio = function(browser_info, init_params) {
 
 
     this.start = function() {
-        if (this.audio) {
-           return true;
-        }
-
         this.audio_mime = this.get_audio_mime(browser_info);
         this.ws_url = this.get_ws_url(browser_info);
 
@@ -77,7 +77,7 @@ var WSAudio = function(browser_info, init_params) {
             return false;
         }
 
-        this.latencyCheck = setInterval(this.latencyController.bind(this), 250);
+        this.latencyController = setInterval(this.latencyController.bind(this), 250);
 
         this.mediasource = new MediaSource();
         this.mediasource.addEventListener("sourceopen", this.sourceOpen.bind(this));
@@ -120,8 +120,7 @@ var WSAudio = function(browser_info, init_params) {
         buffer.addEventListener("updateend", this.onUpdateEnd.bind(this));
 
         this.buffer = buffer;
-
-        this.allowAppend = true;
+        this.initing = false;
 
         this.initWs();
     };
@@ -129,8 +128,8 @@ var WSAudio = function(browser_info, init_params) {
     this.close = function() {
         console.log("Closing Audio");
         try {
-            if (this.latencyCheck) {
-                clearInterval(this.latencyCheck);
+            if (this.latencyController) {
+                clearInterval(this.latencyController);
             }
 
             if (this.mediasource) {
@@ -197,7 +196,7 @@ var WSAudio = function(browser_info, init_params) {
     }
 
     this.updateNext = function() {
-        if (!this.buffQ.length) {
+        if (!this.buffSize) {
             return;
         }
 
@@ -213,7 +212,7 @@ var WSAudio = function(browser_info, init_params) {
     }
 
     this.latencyController = function() {
-        // check for latency and seek forward if necessary
+        // take care about latency
         try {
             var latency = this.audio.buffered.end(0) - this.audio.currentTime;
             if (latency > maxLatency) {
@@ -232,9 +231,9 @@ var WSAudio = function(browser_info, init_params) {
             console.log(this.audio.error);
             //console.log("num processed: " + this.buffCount);
             this.errCount += 1;
-            //if (this.errCount == 1) {
-            //    setTimeout(restartAudio, 3000);
-            //}
+            if (this.errCount == 1) {
+                setTimeout(restartAudio, 3000);
+            }
         }
     }
 
@@ -282,7 +281,7 @@ var WSAudio = function(browser_info, init_params) {
     }
 
     var ws_message = function(event) {
-        if (this.errCount == 0) {
+        if (this.errCount < MAX_ERRORS) {
             this.queue(event.data);
         }
     }
@@ -294,6 +293,8 @@ var WSAudio = function(browser_info, init_params) {
     var ws_close = function() {
         this.audioError("WS Close");
     }
+
+    this.start();
 
     return this;
 
