@@ -2,10 +2,6 @@
 <html>
 
 <head>
-<script src="/static/jquery-2.1.4.min.js"></script>
-<script src="/static/audio.js"></script>
-<script src="/static/browser.js"></script>
-
 <link href="/static/default.css" rel="stylesheet"/>
 
 {% if css %}
@@ -21,32 +17,13 @@ if (window != window.parent) {
     window.parent.postMessage({"type": "reqid", "reqid": window.reqid}, "*");
 }
 
-$(function() {
-    function on_countdown(seconds, countdown_text) {
-        $("#countdown").text(countdown_text);
-    }
-
-    function on_event(type, data) {
-        if (type == "fail" || type == "expire") {
-            window.location.reload();
-        }
-    }
-
-    var proxy_ws = undefined;
-
-    if (!window.location.port) {
-        proxy_ws = "_websockify?port=";
-    }
-
-    var cb = new CBrowser(reqid, "#browser", {"on_countdown": on_countdown,
-                                              "on_event": on_event,
-                                              "audio": {{'true' if audio else 'false'}},
-                                              "proxy_ws": proxy_ws,
-                                              "fill_window": true,
-                                              "inactiveSecs": 10});
-});
+window.CBrowserInit = {
+  "audio": {{'true' if audio else 'false'}},
+"fill_window": true,
+  "inactiveSecs": 10};
 
 </script>
+<script src="/static/shepard.bundle.js"></script>
 </head>
 
 <body>
