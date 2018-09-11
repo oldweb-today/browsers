@@ -5,6 +5,6 @@ module.exports = {
   entry: './index.js',
   output: {
     path: path.resolve(__dirname, '..', 'static'),
-    filename: 'shepard.bundle.js'
+    filename: 'shepherd.bundle.js'
   }
 };
