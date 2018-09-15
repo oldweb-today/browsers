@@ -3,7 +3,7 @@ var OPUS_MIME_TYPE = 'audio/webm; codecs="opus"';
 var MP3_MIME_TYPE = 'audio/mpeg';
 
 // This represents the order in which the types are tried
-var AUDIO_TYPES = [
+const AUDIO_TYPES = [
   {"id": "mp3",
     "type": MP3_MIME_TYPE},
 
@@ -11,8 +11,21 @@ var AUDIO_TYPES = [
     "type": OPUS_MIME_TYPE},
 ];
 
+export {getBestAudioType, WSAudio};
 
-export default function WSAudio (browser_info, init_params) {
+
+function getBestAudioType() {
+  if (window.MediaSource) {
+    for (var i = 0; i < AUDIO_TYPES.length; i++) {
+      if (window.MediaSource.isTypeSupported(AUDIO_TYPES[i].type)) {
+        return AUDIO_TYPES[i].id;
+      }
+    }
+  }
+};
+
+
+function WSAudio (browser_info, init_params) {
   init_params = init_params || {};
 
   var MAX_BUFFERS = 250;

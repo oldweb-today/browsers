@@ -1,6 +1,6 @@
-import RFB from '@novnc/novnc/core/rfb'
-import $ from 'jquery'
-import WSAudio from './audio'
+import RFB from '@novnc/novnc/core/rfb';
+import $ from 'jquery';
+import { WSAudio, getBestAudioType } from './audio';
 
 export default function CBrowser (reqid, target_div, init_params) {
   var cmd_port = undefined;
@@ -131,28 +131,13 @@ export default function CBrowser (reqid, target_div, init_params) {
 
     req_params['reqid'] = reqid;
 
-    if (window.AUDIO_TYPES) {
-      add_audio(req_params, AUDIO_TYPES);
-    } else {
+    req_params["audio"] = getBestAudioType();
+
+    if (!req_params["audio"]) {
       console.log("No Supported Audio Types");
     }
 
     init_browser();
-  }
-
-  function add_audio(request, audio_types) {
-    delete req_params["audio"];
-
-    if (window.MediaSource) {
-      for (var i = 0; i < audio_types.length; i++) {
-        if (window.MediaSource.isTypeSupported(AUDIO_TYPES[i].type)) {
-          req_params["audio"] = AUDIO_TYPES[i].id;
-          return;
-        }
-      }
-    }
-
-    console.log("No Supported Audio Types Found");
   }
 
   function init_browser() {
@@ -191,7 +176,7 @@ export default function CBrowser (reqid, target_div, init_params) {
   }
 
   function handle_browser_response(data) {
-    qid = data.id;
+    var qid = data.id;
 
     if (data.cmd_port && data.vnc_port) {
       cmd_port = data.cmd_port;
@@ -203,19 +188,19 @@ export default function CBrowser (reqid, target_div, init_params) {
 
       if (init_params.audio) {
         // setup_browser can be called many times (specially when noVnc thrown an exception), we stop sound before init again
-        if (window.hasOwnProperty("audioPlugin")) {
+        if (this.audioPlugin) {
           try {
-            window.audioPlugin.stop();
-            window.audioPlugin = undefined;
+            this.audioPlugin.stop();
+            this.audioPlugin = undefined;
           } catch (err){}
 
         }
         if (data.audio) {
-          window.audioPlugin = new WSAudio(data, init_params);
+          this.audioPlugin = new WSAudio(data, init_params);
 
           // activate audio on first click
-          canvas().one('click', function() {
-            window.audioPlugin.start();
+          canvas().one('click', () => {
+            this.audioPlugin.start();
           });
         }
       }
