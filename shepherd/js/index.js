@@ -1,10 +1,15 @@
-import $ from 'jquery'
-import CBrowser from './browser'
+import CBrowser from 'shepherd-client/lib/browser';
 
+document.addEventListener("readystatechange", function() {
+  if (document.readyState != "complete") {
+    return;
+  }
 
-$(function() {
   function on_countdown(seconds, countdown_text) {
-    $("#countdown").text(countdown_text);
+    var text = document.getElementById("countdown");
+    if (text) {
+      text.innerText = countdown_text;
+    }
   }
 
   function on_event(type, data) {

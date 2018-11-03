@@ -4,12 +4,10 @@
   "main": "index.js",
   "scripts": {
     "build": "webpack",
-    "build-dev": "webpack --watch",
-    "build-docker": "webpack --config webpack.docker.config.js"
+    "build-dev": "webpack --watch"
   },
   "dependencies": {
-    "@novnc/novnc": "^1.0.0",
-    "jquery": "^3.3.1"
+    "shepherd-client": "github:oldweb-today/shepherd-client"
   },
   "devDependencies": {
     "webpack": "^4.17.2",
