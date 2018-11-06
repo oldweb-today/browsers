@@ -2,15 +2,11 @@ version: '2'
 
 services:
     shepherd-browsers:
-        image: oldwebtoday/shepherd-browsers
+        image: oldwebtoday/shepherd
         build: ./shepherd-browsers
-
-        #command: uwsgi uwsgi.ini --mount /=/shepherd/main.py
 
         environment:
             - REDIS_BROWSER_URL=redis://redis/0
-            - CLUSTER_NAME=browser_shepherd
-            - NETWORK_NAME=browsers_default
             - IDLE_TIMEOUT=60
             - AUDIO_ALLOWED=true
             - CONTAINER_EXPIRE_SECS=1200

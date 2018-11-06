@@ -1,19 +1,18 @@
 flocks:
-    - name: browsers
+    - name: browsers-vnc
       containers:
         - name: xserver
-          image: owt/display
+          image: oldwebtoday/vnc-ws-audio
           ports:
             vnc_port: 6080
             cmd_port: 6082
 
         - name: browser
-          image: owt/base
+          image: oldwebtoday/base-browser
           set_user_params: true
 
           environment:
             DISPLAY: 'xserver:99'
             PULSE_SERVER: 'tcp:xserver:4713'
-            URL: 'https://www.youtube.com/watch?v=aT-Up5Y4uRI'
 
 

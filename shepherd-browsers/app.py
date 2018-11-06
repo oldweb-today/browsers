@@ -9,13 +9,14 @@ from shepherd.pool import FixedSizePool
 
 from redis import Redis
 
-from flask import request, render_template
+from flask import request, render_template, Response
 
 import os
+import base64
 
 
 NETWORK_NAME = 'shep-browsers:{0}'
-FLOCKS = 'browsers.yaml'
+FLOCKS = 'flocks.yaml'
 
 
 # ============================================================================
@@ -55,30 +56,43 @@ def init_routes(app):
     def init_browser():
         reqid = request.args.get('reqid')
 
-        #todo: set width/height in start
         width = request.args.get('width')
         height = request.args.get('height')
+        audio = request.args.get('audio')
 
-        res = app.pool.start(reqid)
+        environ = {}
+        if width:
+            environ['SCREEN_WIDTH'] = width
 
-        if 'error' in res:
-            return res
+        if height:
+            environ['SCREEN_HEIGHT'] = height
 
-        if 'queued' in res:
+        if audio:
+            environ['AUDIO_TYPE'] = audio
+
+        # vnc password
+        vnc_pass = base64.b64encode(os.urandom(21)).decode('utf-8')
+        environ['VNC_PASS'] = vnc_pass
+
+        res = app.pool.start(reqid, environ=environ)
+
+        if 'error' in res or 'queued' in res:
             return res
 
         browser_res = {'id': reqid,
                        'cmd_port': res['containers']['xserver']['ports']['cmd_port'],
                        'vnc_port': res['containers']['xserver']['ports']['vnc_port'],
                        'ip': res['containers']['browser']['ip'],
-                       'vnc_pass': 'secret',
-                       'audio': 'mp3'
-                       }
+                       'vnc_pass': vnc_pass,
+                       'audio': audio,
+                      }
 
         return browser_res
 
     @app.route('/view/<browser>/<path:url>')
     def view(browser, url):
+        # TODO: parse ts
+        # ensure full url
         if request.query_string:
             url += '?' + request.query_string.decode('utf-8')
 
@@ -87,12 +101,17 @@ def init_routes(app):
               }
 
         opts = {}
-        opts['overrides'] = {'browser': 'owt/' + browser}
-        opts['environment'] = env
+        opts['overrides'] = {'browser': 'oldwebtoday/' + browser}
+        opts['environ'] = env
 
-        res = app.pool.request('browsers', opts)
+        res = app.pool.request('browsers-vnc', opts)
 
-        return render_template('browser_embed.html', reqid=res.get('reqid'))
+        reqid = res.get('reqid')
+
+        if not reqid:
+            return Response('Error Has Occured: ' + str(res), status=400)
+
+        return render_template('browser_embed.html', reqid=reqid)
 
 
 # ============================================================================
