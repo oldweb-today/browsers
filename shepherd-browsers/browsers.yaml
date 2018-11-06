@@ -1,0 +1,19 @@
+flocks:
+    - name: browsers
+      containers:
+        - name: xserver
+          image: owt/display
+          ports:
+            vnc_port: 6080
+            cmd_port: 6082
+
+        - name: browser
+          image: owt/base
+          set_user_params: true
+
+          environment:
+            DISPLAY: 'xserver:99'
+            PULSE_SERVER: 'tcp:xserver:4713'
+            URL: 'https://www.youtube.com/watch?v=aT-Up5Y4uRI'
+
+
