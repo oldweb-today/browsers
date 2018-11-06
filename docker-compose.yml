@@ -1,11 +1,11 @@
 version: '2'
 
 services:
-    shepherd:
-        image: oldwebtoday/shepherd
-        build: ./shepherd
+    shepherd-browsers:
+        image: oldwebtoday/shepherd-browsers
+        build: ./shepherd-browsers
 
-        command: uwsgi uwsgi.ini --mount /=/shepherd/main.py
+        #command: uwsgi uwsgi.ini --mount /=/shepherd/main.py
 
         environment:
             - REDIS_BROWSER_URL=redis://redis/0
