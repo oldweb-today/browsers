@@ -5,36 +5,50 @@ from shepherd.shepherd import Shepherd
 
 from shepherd.schema import Schema, fields
 
-from shepherd.pool import FixedSizePool
+from shepherd.pool import FixedSizePool, PersistentPool
 
-from redis import Redis
+from redis import StrictRedis
 
 from flask import request, render_template, Response
 
 import os
 import base64
+import json
 
 
 NETWORK_NAME = 'shep-browsers:{0}'
 FLOCKS = 'flocks.yaml'
+
+DEFAULT_POOL = 'fixed-pool'
+
+DEFAULT_FLOCK = 'browsers-vnc'
 
 
 # ============================================================================
 def main():
     redis_url = os.environ.get('REDIS_BROWSER_URL', 'redis://localhost/0')
 
-    redis = Redis.from_url(redis_url, decode_responses=True)
+    redis = StrictRedis.from_url(redis_url, decode_responses=True)
 
     shepherd = Shepherd(redis, NETWORK_NAME)
     shepherd.load_flocks(FLOCKS)
 
-    pool = FixedSizePool('fixed-pool', shepherd, redis,
-                         duration=180,
-                         max_size=5,
-                         expire_check=30,
-                         number_ttl=120)
+    fixed_pool = FixedSizePool('fixed-pool', shepherd, redis,
+                               duration=180,
+                               max_size=5,
+                               expire_check=30,
+                               number_ttl=120)
 
-    wsgi_app = create_app(shepherd, pool, name=__name__)
+    persist_pool = PersistentPool('auto-pool', shepherd, redis,
+                                  duration=180,
+                                  max_size=2,
+                                  expire_check=30,
+                                  grace_time=1)
+
+    pools = {'fixed-pool': fixed_pool,
+             'auto-pool': persist_pool}
+
+    wsgi_app = create_app(shepherd, pools, name=__name__)
     init_routes(wsgi_app)
     return wsgi_app
 
@@ -74,7 +88,7 @@ def init_routes(app):
         vnc_pass = base64.b64encode(os.urandom(21)).decode('utf-8')
         environ['VNC_PASS'] = vnc_pass
 
-        res = app.pool.start(reqid, environ=environ)
+        res = app.get_pool(DEFAULT_POOL).start(reqid, environ=environ)
 
         if 'error' in res or 'queued' in res:
             return res
@@ -90,7 +104,8 @@ def init_routes(app):
         return browser_res
 
     @app.route('/view/<browser>/<path:url>')
-    def view(browser, url):
+    @app.route('/view/<flock>/<browser>/<path:url>')
+    def view(browser, url, flock=DEFAULT_FLOCK):
         # TODO: parse ts
         # ensure full url
         if request.query_string:
@@ -104,7 +119,7 @@ def init_routes(app):
         opts['overrides'] = {'browser': 'oldwebtoday/' + browser}
         opts['environ'] = env
 
-        res = app.pool.request('browsers-vnc', opts)
+        res = app.get_pool(DEFAULT_POOL).request(flock, opts)
 
         reqid = res.get('reqid')
 
@@ -112,6 +127,11 @@ def init_routes(app):
             return Response('Error Has Occured: ' + str(res), status=400)
 
         return render_template('browser_embed.html', reqid=reqid)
+
+    @app.route('/info/<reqid>', resp_schema=InitBrowserSchema)
+    def info(reqid):
+        res = app.get_pool(DEFAULT_POOL).start(reqid)
+        return {'ip': res['containers']['browser']['ip']}
 
 
 # ============================================================================
