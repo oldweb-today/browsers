@@ -15,4 +15,19 @@ flocks:
             DISPLAY: 'xserver:99'
             PULSE_SERVER: 'tcp:xserver:4713'
 
+    - name: browsers-webrtc-audio
+      containers:
+      - name: xserver
+        image: oldwebtoday/vnc-webrtc-audio
+        ports:
+          vnc_port: 6080
+          cmd_port: 6082
+
+      - name: browser
+        image: oldwebtoday/base-browser
+        set_user_params: true
+
+        environment:
+          DISPLAY: 'xserver:99'
+          PULSE_SERVER: 'tcp:xserver:4713'
 
